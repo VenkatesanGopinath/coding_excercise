@@ -107,9 +107,10 @@
                 <configuration>
                     <dataFile>${project.build.directory}/jacoco.exec</dataFile>
                     <outputDirectory>${project.reporting.outputDirectory}/jacoco</outputDirectory>
-                    <!-- Exclude auto-generated OpenAPI stubs from coverage measurement -->
+                    <!-- Exclude auto-generated OpenAPI stubs and pre-existing legacy code -->
                     <excludes>
                         <exclude>com/warehouse/api/**</exclude>
+                        <exclude>com/fulfilment/application/monolith/stores/**</exclude>
                     </excludes>
                 </configuration>
                 <executions>

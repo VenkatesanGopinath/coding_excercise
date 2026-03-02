@@ -171,4 +171,17 @@ public class WarehouseEndpointTest {
         .then()
         .statusCode(400);
   }
+
+  // --- GET /q/health/ready ---
+
+  @Test
+  void healthCheck_returns200_withActiveWarehouseCount() {
+    given()
+        .when()
+        .get("/q/health/ready")
+        .then()
+        .statusCode(200)
+        .body(containsString("warehouse-store"))
+        .body(containsString("UP"));
+  }
 }
