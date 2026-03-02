@@ -1,0 +1,118 @@
+package com.fulfilment.application.monolith.warehouses.domain.usecases;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
+import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseStore;
+import jakarta.ws.rs.WebApplicationException;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+/**
+ * Pure unit tests for ArchiveWarehouseUseCase using an in-memory stub.
+ */
+public class ArchiveWarehouseUseCaseTest {
+
+  static class InMemoryWarehouseStore implements WarehouseStore {
+    final List<Warehouse> warehouses = new ArrayList<>();
+
+    @Override
+    public List<Warehouse> getAll() {
+      return warehouses.stream().filter(w -> w.archivedAt == null).toList();
+    }
+
+    @Override
+    public void create(Warehouse warehouse) {
+      warehouses.add(warehouse);
+    }
+
+    @Override
+    public void update(Warehouse warehouse) {
+      for (int i = 0; i < warehouses.size(); i++) {
+        if (warehouses.get(i).businessUnitCode.equals(warehouse.businessUnitCode)
+            && warehouses.get(i).archivedAt == null) {
+          warehouses.set(i, warehouse);
+          return;
+        }
+      }
+    }
+
+    @Override
+    public void remove(Warehouse warehouse) {
+      warehouses.removeIf(w -> w.businessUnitCode.equals(warehouse.businessUnitCode));
+    }
+
+    @Override
+    public Warehouse findByBusinessUnitCode(String buCode) {
+      return warehouses.stream()
+          .filter(w -> buCode.equals(w.businessUnitCode) && w.archivedAt == null)
+          .findFirst()
+          .orElse(null);
+    }
+  }
+
+  private InMemoryWarehouseStore store;
+  private ArchiveWarehouseUseCase useCase;
+
+  @BeforeEach
+  void setUp() {
+    store = new InMemoryWarehouseStore();
+    useCase = new ArchiveWarehouseUseCase(store);
+  }
+
+  @Test
+  void archive_happyPath_warehouseIsArchived() {
+    var active = new Warehouse();
+    active.businessUnitCode = "MWH.001";
+    active.location = "ZWOLLE-001";
+    active.capacity = 30;
+    active.stock = 5;
+    store.create(active);
+
+    var toArchive = new Warehouse();
+    toArchive.businessUnitCode = "MWH.001";
+    useCase.archive(toArchive);
+
+    // After archive, the warehouse should not be findable as active
+    assertEquals(null, store.findByBusinessUnitCode("MWH.001"));
+    // But the archivedAt should be set on the stored record
+    var archived = store.warehouses.stream()
+        .filter(w -> "MWH.001".equals(w.businessUnitCode))
+        .findFirst()
+        .orElse(null);
+    assertNotNull(archived);
+    assertNotNull(archived.archivedAt);
+  }
+
+  @Test
+  void archive_warehouseNotFound_returns404() {
+    var toArchive = new Warehouse();
+    toArchive.businessUnitCode = "MWH.NONEXISTENT";
+
+    var ex = assertThrows(WebApplicationException.class, () -> useCase.archive(toArchive));
+
+    assertEquals(404, ex.getResponse().getStatus());
+  }
+
+  @Test
+  void archive_alreadyArchivedWarehouse_returns404() {
+    var archived = new Warehouse();
+    archived.businessUnitCode = "MWH.001";
+    archived.location = "ZWOLLE-001";
+    archived.capacity = 30;
+    archived.stock = 5;
+    archived.archivedAt = java.time.LocalDateTime.now().minusDays(1);
+    store.warehouses.add(archived);
+
+    var toArchive = new Warehouse();
+    toArchive.businessUnitCode = "MWH.001";
+
+    var ex = assertThrows(WebApplicationException.class, () -> useCase.archive(toArchive));
+
+    assertEquals(404, ex.getResponse().getStatus());
+  }
+}
