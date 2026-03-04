@@ -46,6 +46,40 @@ public class ReplaceWarehouseUseCase implements ReplaceWarehouseOperation {
           "Location '" + newWarehouse.location + "' is not valid.", 400);
     }
 
+    // When moving to a different location, that location must still have a free slot
+    boolean movingToNewLocation = !newWarehouse.location.equals(oldWarehouse.location);
+    if (movingToNewLocation) {
+      long activeAtNewLocation =
+          warehouseStore.getAll().stream()
+              .filter(w -> newWarehouse.location.equals(w.location))
+              .count();
+      if (activeAtNewLocation >= location.maxNumberOfWarehouses) {
+        LOG.warnf("Replace rejected: max warehouses (%d) reached at new location '%s'",
+            location.maxNumberOfWarehouses, newWarehouse.location);
+        throw new WebApplicationException(
+            "Maximum number of warehouses already reached for location '"
+                + newWarehouse.location + "'.", 400);
+      }
+    }
+
+    // New capacity must not push the new location over its total capacity limit.
+    // If staying at the same location, the old warehouse's capacity is freed first.
+    long existingCapacityAtNewLocation =
+        warehouseStore.getAll().stream()
+            .filter(w -> newWarehouse.location.equals(w.location))
+            .mapToLong(w -> w.capacity != null ? w.capacity : 0)
+            .sum();
+    long effectiveExisting = movingToNewLocation
+        ? existingCapacityAtNewLocation
+        : existingCapacityAtNewLocation - (oldWarehouse.capacity != null ? oldWarehouse.capacity : 0);
+    if (newWarehouse.capacity == null || effectiveExisting + newWarehouse.capacity > location.maxCapacity) {
+      LOG.warnf("Replace rejected: new capacity %d would exceed max %d at location '%s'",
+          newWarehouse.capacity, location.maxCapacity, newWarehouse.location);
+      throw new WebApplicationException(
+          "Warehouse capacity would exceed the maximum allowed for location '"
+              + newWarehouse.location + "'.", 400);
+    }
+
     // New warehouse capacity must be able to accommodate the old warehouse's stock
     if (newWarehouse.capacity == null || newWarehouse.capacity < oldWarehouse.stock) {
       LOG.warnf("Replace rejected: new capacity %d cannot accommodate old stock %d",

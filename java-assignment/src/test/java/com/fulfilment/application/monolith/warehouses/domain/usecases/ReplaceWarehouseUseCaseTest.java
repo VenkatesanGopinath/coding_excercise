@@ -196,6 +196,37 @@ public class ReplaceWarehouseUseCaseTest {
   }
 
   @Test
+  void replace_newLocationAtMaxWarehouseCount_returns400() {
+    // ZWOLLE-001 allows only 1 warehouse; another is already there
+    store.create(existingWarehouse("MWH.001", "AMSTERDAM-001", 50, 10));
+    store.create(existingWarehouse("MWH.OTHER", "ZWOLLE-001", 35, 5));
+
+    var newWarehouse = new Warehouse();
+    newWarehouse.businessUnitCode = "MWH.001";
+    newWarehouse.location = "ZWOLLE-001"; // already full (max = 1)
+    newWarehouse.capacity = 35;
+    newWarehouse.stock = 10;
+
+    var ex = assertThrows(WebApplicationException.class, () -> useCase.replace(newWarehouse));
+    assertEquals(400, ex.getResponse().getStatus());
+  }
+
+  @Test
+  void replace_newCapacityExceedsLocationMax_returns400() {
+    // HELMOND-001 maxCapacity = 45; requesting 46 should be rejected
+    store.create(existingWarehouse("MWH.001", "AMSTERDAM-001", 50, 30));
+
+    var newWarehouse = new Warehouse();
+    newWarehouse.businessUnitCode = "MWH.001";
+    newWarehouse.location = "HELMOND-001";
+    newWarehouse.capacity = 46; // exceeds HELMOND-001 max of 45
+    newWarehouse.stock = 30;
+
+    var ex = assertThrows(WebApplicationException.class, () -> useCase.replace(newWarehouse));
+    assertEquals(400, ex.getResponse().getStatus());
+  }
+
+  @Test
   void replace_differentValidLocation_succeeds() {
     // Replacing to a different valid location is allowed
     store.create(existingWarehouse("MWH.001", "AMSTERDAM-001", 50, 20));
