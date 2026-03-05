@@ -3,21 +3,12 @@ package com.fulfilment.application.monolith.warehouses.domain.usecases;
 import com.fulfilment.application.monolith.warehouses.domain.models.FulfillmentAssignment;
 import com.fulfilment.application.monolith.warehouses.domain.ports.AssignFulfillmentOperation;
 import com.fulfilment.application.monolith.warehouses.domain.ports.FulfillmentStore;
+import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseStore;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.WebApplicationException;
 import org.jboss.logging.Logger;
 
-/**
- * Use case for assigning a Warehouse as a fulfillment unit for a Product to a Store.
- *
- * <p>Enforces three constraints before persisting the assignment:
- * <ol>
- *   <li>Each Product can be fulfilled by at most 2 different Warehouses per Store.</li>
- *   <li>Each Store can be fulfilled by at most 3 different Warehouses (across all products).</li>
- *   <li>Each Warehouse can store at most 5 different product types.</li>
- * </ol>
- */
 @ApplicationScoped
 public class AssignFulfillmentUseCase implements AssignFulfillmentOperation {
 
@@ -27,9 +18,11 @@ public class AssignFulfillmentUseCase implements AssignFulfillmentOperation {
   private static final int MAX_WAREHOUSES_PER_STORE = 3;
   private static final int MAX_PRODUCTS_PER_WAREHOUSE = 5;
 
+  private final WarehouseStore warehouseStore;
   private final FulfillmentStore fulfillmentStore;
 
-  public AssignFulfillmentUseCase(FulfillmentStore fulfillmentStore) {
+  public AssignFulfillmentUseCase(WarehouseStore warehouseStore, FulfillmentStore fulfillmentStore) {
+    this.warehouseStore = warehouseStore;
     this.fulfillmentStore = fulfillmentStore;
   }
 
@@ -39,8 +32,7 @@ public class AssignFulfillmentUseCase implements AssignFulfillmentOperation {
     LOG.infof("Assigning fulfillment [warehouse=%s, product=%d, store=%d]",
         warehouseBuc, productId, storeId);
 
-    // Validate all three entities exist
-    if (!fulfillmentStore.warehouseIsActive(warehouseBuc)) {
+    if (warehouseStore.findByBusinessUnitCode(warehouseBuc) == null) {
       LOG.warnf("Assignment rejected: warehouse '%s' not found or archived", warehouseBuc);
       throw new WebApplicationException(
           "Warehouse '" + warehouseBuc + "' not found or not active.", 404);

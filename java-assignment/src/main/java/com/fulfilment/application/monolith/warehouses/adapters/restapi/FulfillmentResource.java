@@ -19,16 +19,6 @@ import jakarta.ws.rs.core.Response;
 import java.util.List;
 import org.jboss.logging.Logger;
 
-/**
- * REST adapter for Warehouse fulfillment assignments.
- *
- * <p>Endpoints:
- * <ul>
- *   <li>POST   /warehouse/{buc}/fulfillment         — assign a warehouse to fulfil a product for a store</li>
- *   <li>GET    /warehouse/{buc}/fulfillment         — list all fulfillment assignments for a warehouse</li>
- *   <li>DELETE /warehouse/{buc}/fulfillment/{id}    — remove a specific fulfillment assignment</li>
- * </ul>
- */
 @RequestScoped
 @Path("/warehouse/{businessUnitCode}/fulfillment")
 @Produces(MediaType.APPLICATION_JSON)
@@ -37,8 +27,8 @@ public class FulfillmentResource {
 
   private static final Logger LOG = Logger.getLogger(FulfillmentResource.class);
 
-  @Inject AssignFulfillmentOperation assignFulfillmentOperation;
-  @Inject FulfillmentStore fulfillmentStore;
+  @Inject private AssignFulfillmentOperation assignFulfillmentOperation;
+  @Inject private FulfillmentStore fulfillmentStore;
 
   @POST
   public Response assign(
@@ -75,7 +65,6 @@ public class FulfillmentResource {
     return Response.noContent().build();
   }
 
-  /** Request body for POST /warehouse/{buc}/fulfillment */
   public static class FulfillmentRequest {
     public Long productId;
     public Long storeId;

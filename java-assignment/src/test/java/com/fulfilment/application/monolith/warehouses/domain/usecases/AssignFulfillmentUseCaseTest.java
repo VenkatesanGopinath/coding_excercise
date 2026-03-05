@@ -5,7 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fulfilment.application.monolith.warehouses.domain.models.FulfillmentAssignment;
+import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
 import com.fulfilment.application.monolith.warehouses.domain.ports.FulfillmentStore;
+import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseStore;
 import jakarta.ws.rs.WebApplicationException;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -16,32 +18,46 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Pure unit tests for AssignFulfillmentUseCase.
- * Uses an in-memory stub for FulfillmentStore — no database, no CDI, runs in milliseconds.
+ * Uses in-memory stubs — no database, no CDI, runs in milliseconds.
  */
 public class AssignFulfillmentUseCaseTest {
 
   // ---------------------------------------------------------------------------
-  // In-memory stub
+  // In-memory stubs
   // ---------------------------------------------------------------------------
+
+  static class InMemoryWarehouseStore implements WarehouseStore {
+
+    private final Set<String> activeBucs;
+
+    InMemoryWarehouseStore(Set<String> activeBucs) {
+      this.activeBucs = new HashSet<>(activeBucs);
+    }
+
+    @Override
+    public Warehouse findByBusinessUnitCode(String buCode) {
+      if (!activeBucs.contains(buCode)) return null;
+      var w = new Warehouse();
+      w.businessUnitCode = buCode;
+      return w;
+    }
+
+    @Override public List<Warehouse> getAll() { return List.of(); }
+    @Override public void create(Warehouse warehouse) {}
+    @Override public void update(Warehouse warehouse) {}
+    @Override public void remove(Warehouse warehouse) {}
+  }
 
   static class InMemoryFulfillmentStore implements FulfillmentStore {
 
-    final Set<String> activeWarehouses;
     final Set<Long> existingProducts;
     final Set<Long> existingStores;
     final List<FulfillmentAssignment> assignments = new ArrayList<>();
     private long idSeq = 1;
 
-    InMemoryFulfillmentStore(
-        Set<String> activeWarehouses, Set<Long> existingProducts, Set<Long> existingStores) {
-      this.activeWarehouses = new HashSet<>(activeWarehouses);
+    InMemoryFulfillmentStore(Set<Long> existingProducts, Set<Long> existingStores) {
       this.existingProducts = new HashSet<>(existingProducts);
       this.existingStores = new HashSet<>(existingStores);
-    }
-
-    @Override
-    public boolean warehouseIsActive(String buc) {
-      return activeWarehouses.contains(buc);
     }
 
     @Override
@@ -112,7 +128,7 @@ public class AssignFulfillmentUseCaseTest {
       assignments.removeIf(a -> id.equals(a.id));
     }
 
-    /** Helper: pre-load assignments directly, bypassing the use case. */
+    /** Pre-loads assignments directly, bypassing the use case. */
     void addAssignment(String buc, Long productId, Long storeId) {
       var f = new FulfillmentAssignment();
       f.id = idSeq++;
@@ -127,16 +143,18 @@ public class AssignFulfillmentUseCaseTest {
   // Test setup
   // ---------------------------------------------------------------------------
 
+  private InMemoryWarehouseStore warehouseStore;
   private InMemoryFulfillmentStore store;
   private AssignFulfillmentUseCase useCase;
 
   @BeforeEach
   void setUp() {
+    warehouseStore = new InMemoryWarehouseStore(
+        Set.of("MWH.001", "MWH.002", "MWH.003", "MWH.004"));
     store = new InMemoryFulfillmentStore(
-        Set.of("MWH.001", "MWH.002", "MWH.003", "MWH.004"),
         Set.of(1L, 2L, 3L, 4L, 5L, 6L),
         Set.of(1L, 2L, 3L, 4L));
-    useCase = new AssignFulfillmentUseCase(store);
+    useCase = new AssignFulfillmentUseCase(warehouseStore, store);
   }
 
   // ---------------------------------------------------------------------------
@@ -186,7 +204,6 @@ public class AssignFulfillmentUseCaseTest {
 
   @Test
   void assign_warehouseAlreadyHas5ProductTypes_returns400() {
-    // Fill MWH.001 with 5 different products for store 1
     store.addAssignment("MWH.001", 1L, 1L);
     store.addAssignment("MWH.001", 2L, 1L);
     store.addAssignment("MWH.001", 3L, 1L);
@@ -216,7 +233,6 @@ public class AssignFulfillmentUseCaseTest {
 
   @Test
   void assign_productAlreadyFulfilledBy2WarehousesForStore_returns400() {
-    // Product 1 for store 1 is already handled by 2 different warehouses
     store.addAssignment("MWH.001", 1L, 1L);
     store.addAssignment("MWH.002", 1L, 1L);
 
@@ -240,7 +256,6 @@ public class AssignFulfillmentUseCaseTest {
 
   @Test
   void assign_storeAlreadyFulfilledBy3Warehouses_returns400() {
-    // Store 1 already has 3 different warehouses (for different products)
     store.addAssignment("MWH.001", 1L, 1L);
     store.addAssignment("MWH.002", 2L, 1L);
     store.addAssignment("MWH.003", 3L, 1L);
@@ -266,11 +281,10 @@ public class AssignFulfillmentUseCaseTest {
 
   @Test
   void assign_sameProductAndWarehouse_differentStore_succeeds() {
-    // Product 1 fulfilled by MWH.001 for store 1 — assigning same product/warehouse for store 2 is separate
+    // Store 1 at its limit for product 1; store 2 has a clean slate
     store.addAssignment("MWH.001", 1L, 1L);
     store.addAssignment("MWH.002", 1L, 1L);
 
-    // Store 2 has a clean slate — assigning product 1 with MWH.001 is valid
     FulfillmentAssignment result = useCase.assign("MWH.001", 1L, 2L);
     assertNotNull(result);
   }

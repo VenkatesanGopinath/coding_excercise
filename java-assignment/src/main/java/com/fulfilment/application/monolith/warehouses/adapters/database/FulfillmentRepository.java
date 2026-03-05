@@ -11,27 +11,12 @@ import jakarta.persistence.EntityManager;
 import java.util.List;
 import org.jboss.logging.Logger;
 
-/**
- * JPA/Panache implementation of {@link FulfillmentStore}.
- * Uses JPQL COUNT DISTINCT queries for the constraint checks to avoid
- * loading entire result sets into memory.
- */
 @ApplicationScoped
 public class FulfillmentRepository implements FulfillmentStore, PanacheRepository<DbFulfillmentAssignment> {
 
   private static final Logger LOG = Logger.getLogger(FulfillmentRepository.class);
 
   @Inject EntityManager em;
-
-  @Override
-  public boolean warehouseIsActive(String warehouseBuc) {
-    Long count = em.createQuery(
-            "SELECT COUNT(w) FROM DbWarehouse w WHERE w.businessUnitCode = :buc AND w.archivedAt IS NULL",
-            Long.class)
-        .setParameter("buc", warehouseBuc)
-        .getSingleResult();
-    return count > 0;
-  }
 
   @Override
   public boolean productExists(Long productId) {
