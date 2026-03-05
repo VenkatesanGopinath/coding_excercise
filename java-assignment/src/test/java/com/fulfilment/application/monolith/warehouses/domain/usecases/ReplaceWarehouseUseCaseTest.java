@@ -127,6 +127,21 @@ public class ReplaceWarehouseUseCaseTest {
   }
 
   @Test
+  void replace_nullLocation_returns400() {
+    store.create(existingWarehouse("MWH.001", "AMSTERDAM-001", 50, 10));
+
+    var newWarehouse = new Warehouse();
+    newWarehouse.businessUnitCode = "MWH.001";
+    newWarehouse.location = null;
+    newWarehouse.capacity = 50;
+    newWarehouse.stock = 10;
+
+    var ex = assertThrows(WebApplicationException.class, () -> useCase.replace(newWarehouse));
+
+    assertEquals(400, ex.getResponse().getStatus());
+  }
+
+  @Test
   void replace_invalidLocation_returns400() {
     store.create(existingWarehouse("MWH.001", "AMSTERDAM-001", 50, 10));
 

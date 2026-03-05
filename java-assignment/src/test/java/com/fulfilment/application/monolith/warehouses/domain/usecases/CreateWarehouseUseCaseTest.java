@@ -109,6 +109,15 @@ public class CreateWarehouseUseCaseTest {
   }
 
   @Test
+  void createWarehouse_nullLocation_returns400() {
+    var warehouse = newWarehouse("MWH.NEW", null, 10, 5);
+
+    var ex = assertThrows(WebApplicationException.class, () -> useCase.create(warehouse));
+
+    assertEquals(400, ex.getResponse().getStatus());
+  }
+
+  @Test
   void createWarehouse_invalidLocation_returns400() {
     var warehouse = newWarehouse("MWH.NEW", "NOWHERE-999", 10, 5);
 

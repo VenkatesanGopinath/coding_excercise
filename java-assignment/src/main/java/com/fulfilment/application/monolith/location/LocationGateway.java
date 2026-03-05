@@ -27,6 +27,9 @@ public class LocationGateway implements LocationResolver {
 
   @Override
   public Location resolveByIdentifier(String identifier) {
+    if (identifier == null || identifier.isBlank()) {
+      return null;
+    }
     LOG.debugf("Resolving location for identifier '%s'", identifier);
     Location found = locations.stream()
         .filter(l -> l.identification.equals(identifier))

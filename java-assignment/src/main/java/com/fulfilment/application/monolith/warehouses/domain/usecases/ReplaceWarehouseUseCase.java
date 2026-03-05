@@ -39,6 +39,10 @@ public class ReplaceWarehouseUseCase implements ReplaceWarehouseOperation {
     }
 
     // Validate the new warehouse's location
+    if (newWarehouse.location == null || newWarehouse.location.isBlank()) {
+      LOG.warnf("Replace rejected: location must not be blank");
+      throw new WebApplicationException("Location must not be blank.", 400);
+    }
     Location location = locationResolver.resolveByIdentifier(newWarehouse.location);
     if (location == null) {
       LOG.warnf("Replace rejected: location '%s' is not valid", newWarehouse.location);

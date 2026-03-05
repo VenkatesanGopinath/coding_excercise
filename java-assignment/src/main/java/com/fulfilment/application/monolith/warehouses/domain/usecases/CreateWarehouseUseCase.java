@@ -37,7 +37,11 @@ public class CreateWarehouseUseCase implements CreateWarehouseOperation {
           "Business Unit Code '" + warehouse.businessUnitCode + "' already exists.", 400);
     }
 
-    // 2. Location must be a known valid location
+    // 2. Location must be provided and must be a known valid location
+    if (warehouse.location == null || warehouse.location.isBlank()) {
+      LOG.warnf("Creation rejected: location must not be blank");
+      throw new WebApplicationException("Location must not be blank.", 400);
+    }
     Location location = locationResolver.resolveByIdentifier(warehouse.location);
     if (location == null) {
       LOG.warnf("Creation rejected: location '%s' is not valid", warehouse.location);
