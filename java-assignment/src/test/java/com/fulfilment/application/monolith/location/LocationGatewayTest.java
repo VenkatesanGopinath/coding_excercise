@@ -46,7 +46,14 @@ public class LocationGatewayTest {
 
   @Test
   public void testWhenResolveNullIdentifierShouldReturnNull() {
-    Location location = locationGateway.resolveByIdentifier("UNKNOWN");
+    Location location = locationGateway.resolveByIdentifier(null);
+
+    assertNull(location);
+  }
+
+  @Test
+  public void testWhenResolveBlankIdentifierShouldReturnNull() {
+    Location location = locationGateway.resolveByIdentifier("   ");
 
     assertNull(location);
   }
