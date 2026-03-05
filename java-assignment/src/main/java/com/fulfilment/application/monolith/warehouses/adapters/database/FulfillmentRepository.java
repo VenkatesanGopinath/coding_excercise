@@ -73,18 +73,24 @@ public class FulfillmentRepository implements FulfillmentStore, PanacheRepositor
 
   @Override
   public List<FulfillmentAssignment> findByWarehouse(String warehouseBuc) {
-    return this.find("warehouseBusinessUnitCode", warehouseBuc)
+    List<FulfillmentAssignment> result = this.find("warehouseBusinessUnitCode", warehouseBuc)
         .stream()
         .map(DbFulfillmentAssignment::toDomain)
         .toList();
+    LOG.debugf("findByWarehouse('%s') returned %d assignments", warehouseBuc, result.size());
+    return result;
   }
 
   @Override
   public FulfillmentAssignment findAssignment(Long id, String warehouseBuc) {
-    return this.find("id = ?1 and warehouseBusinessUnitCode = ?2", id, warehouseBuc)
+    FulfillmentAssignment found = this.find("id = ?1 and warehouseBusinessUnitCode = ?2", id, warehouseBuc)
         .firstResultOptional()
         .map(DbFulfillmentAssignment::toDomain)
         .orElse(null);
+    if (found == null) {
+      LOG.debugf("No fulfillment assignment found for id=%d and warehouse='%s'", id, warehouseBuc);
+    }
+    return found;
   }
 
   @Override
@@ -93,6 +99,8 @@ public class FulfillmentRepository implements FulfillmentStore, PanacheRepositor
     DbFulfillmentAssignment entity = this.findById(id);
     if (entity != null) {
       this.delete(entity);
+    } else {
+      LOG.warnf("remove() called but fulfillment assignment not found for id=%d", id);
     }
   }
 }
