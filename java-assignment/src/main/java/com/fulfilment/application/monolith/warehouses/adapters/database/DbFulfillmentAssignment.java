@@ -1,7 +1,6 @@
 package com.fulfilment.application.monolith.warehouses.adapters.database;
 
 import com.fulfilment.application.monolith.warehouses.domain.models.FulfillmentAssignment;
-import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -17,8 +16,6 @@ public class DbFulfillmentAssignment {
 
   @Id @GeneratedValue public Long id;
 
-  // Explicit column name to avoid the verbose default 'warehousebusinessunitcode'
-  @Column(name = "warehouseBusinessUnitCode", nullable = false)
   public String warehouseBusinessUnitCode;
 
   public Long productId;
