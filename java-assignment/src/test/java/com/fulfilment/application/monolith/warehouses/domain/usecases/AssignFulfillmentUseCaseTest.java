@@ -288,4 +288,69 @@ public class AssignFulfillmentUseCaseTest {
     FulfillmentAssignment result = useCase.assign("MWH.001", 1L, 2L);
     assertNotNull(result);
   }
+
+  // ---------------------------------------------------------------------------
+  // Constraint priority ordering
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void assign_warehouseFullCheckedBeforeStoreConstraint_returns400() {
+    // Fill MWH.001 with 5 distinct product types → Constraint 3 triggers.
+    // Store 1 also has 3 distinct warehouses → Constraint 2 would also trigger.
+    // Constraint 3 is evaluated first in the use case, so its error is returned.
+    store.addAssignment("MWH.001", 1L, 1L);
+    store.addAssignment("MWH.001", 2L, 1L);
+    store.addAssignment("MWH.001", 3L, 1L);
+    store.addAssignment("MWH.001", 4L, 1L);
+    store.addAssignment("MWH.001", 5L, 1L);
+    store.addAssignment("MWH.002", 1L, 1L);
+    store.addAssignment("MWH.003", 2L, 1L);
+
+    var ex = assertThrows(WebApplicationException.class,
+        () -> useCase.assign("MWH.001", 6L, 1L));
+    assertEquals(400, ex.getResponse().getStatus());
+    // The assignment must NOT have been persisted
+    assertEquals(0, store.assignments.stream()
+        .filter(a -> "MWH.001".equals(a.warehouseBusinessUnitCode) && a.productId == 6L)
+        .count());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Duplicate assignment
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void assign_duplicateAssignment_sameWarehouseProductStore_secondSucceeds() {
+    // The use case has no explicit duplicate guard, so assigning the same
+    // (warehouse, product, store) twice creates two records.
+    useCase.assign("MWH.001", 1L, 1L);
+
+    FulfillmentAssignment second = useCase.assign("MWH.001", 1L, 1L);
+
+    assertNotNull(second);
+    assertEquals(2, store.assignments.size());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Constraint 1 triggered when product has exactly 2 warehouses for a store
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void assign_productAtConstraint1Limit_constraint1EnforcedNotConstraint3() {
+    // MWH.001 has 4 products (< 5 → constraint 3 clear)
+    store.addAssignment("MWH.001", 1L, 2L);
+    store.addAssignment("MWH.001", 2L, 2L);
+    store.addAssignment("MWH.001", 3L, 2L);
+    store.addAssignment("MWH.001", 4L, 2L);
+    // Product 5 already has 2 warehouses for store 2 → constraint 1 at limit
+    store.addAssignment("MWH.002", 5L, 2L);
+    store.addAssignment("MWH.003", 5L, 2L);
+
+    // Assigning MWH.001 / product 5 / store 2:
+    //   Constraint 3: 4 < 5 → clear
+    //   Constraint 1: 2 warehouses for (prod=5, store=2) → at limit → REJECT
+    var ex = assertThrows(WebApplicationException.class,
+        () -> useCase.assign("MWH.001", 5L, 2L));
+    assertEquals(400, ex.getResponse().getStatus());
+  }
 }

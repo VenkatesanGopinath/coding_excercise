@@ -3,6 +3,7 @@ package com.fulfilment.application.monolith.warehouses.domain.usecases;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
 import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseStore;
@@ -106,5 +107,52 @@ public class ArchiveWarehouseUseCaseTest {
     var ex = assertThrows(WebApplicationException.class, () -> useCase.archive("MWH.001"));
 
     assertEquals(404, ex.getResponse().getStatus());
+  }
+
+  @Test
+  void archive_emptyStringId_returns404() {
+    // Empty string does not match any BUC — must be treated as not found
+    var ex = assertThrows(WebApplicationException.class, () -> useCase.archive(""));
+
+    assertEquals(404, ex.getResponse().getStatus());
+  }
+
+  @Test
+  void archive_archivingTwice_secondAttemptReturns404() {
+    var active = new Warehouse();
+    active.businessUnitCode = "MWH.002";
+    active.location = "ZWOLLE-001";
+    active.capacity = 30;
+    active.stock = 5;
+    store.create(active);
+
+    // First archive must succeed
+    useCase.archive("MWH.002");
+
+    // Second archive on an already-archived warehouse must return 404
+    var ex = assertThrows(WebApplicationException.class, () -> useCase.archive("MWH.002"));
+    assertEquals(404, ex.getResponse().getStatus());
+  }
+
+  @Test
+  void archive_archivedAtTimestampIsSet() {
+    var active = new Warehouse();
+    active.businessUnitCode = "MWH.003";
+    active.location = "ZWOLLE-001";
+    active.capacity = 30;
+    active.stock = 0;
+    store.create(active);
+
+    var before = java.time.LocalDateTime.now();
+    useCase.archive("MWH.003");
+    var after = java.time.LocalDateTime.now();
+
+    var record = store.warehouses.stream()
+        .filter(w -> "MWH.003".equals(w.businessUnitCode))
+        .findFirst()
+        .orElse(null);
+    assertNotNull(record);
+    assertNotNull(record.archivedAt);
+    assertTrue(!record.archivedAt.isBefore(before) && !record.archivedAt.isAfter(after));
   }
 }

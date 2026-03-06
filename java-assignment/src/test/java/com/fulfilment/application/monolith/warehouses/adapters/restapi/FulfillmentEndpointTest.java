@@ -22,6 +22,34 @@ import org.junit.jupiter.api.TestMethodOrder;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class FulfillmentEndpointTest {
 
+  // --- POST: request body validation (400) ---
+
+  @Test
+  @Order(4)
+  void assign_missingProductId_returns400() {
+    // productId is @NotNull — omitting it must trigger bean-validation → 400
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"storeId\": 1}")
+        .when()
+        .post("/warehouse/MWH.001/fulfillment")
+        .then()
+        .statusCode(400);
+  }
+
+  @Test
+  @Order(5)
+  void assign_missingStoreId_returns400() {
+    // storeId is @NotNull — omitting it must trigger bean-validation → 400
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"productId\": 2}")
+        .when()
+        .post("/warehouse/MWH.001/fulfillment")
+        .then()
+        .statusCode(400);
+  }
+
   // --- POST: existence validation (404) ---
 
   @Test
@@ -114,6 +142,19 @@ public class FulfillmentEndpointTest {
         .get("/warehouse/MWH.001/fulfillment")
         .then()
         .statusCode(200);
+  }
+
+  @Test
+  @Order(21)
+  void listByWarehouse_nonExistentWarehouse_returns200WithEmptyList() {
+    // The listing endpoint delegates to the repository filtered by BUC.
+    // It does NOT check warehouse existence, so it returns an empty array.
+    given()
+        .when()
+        .get("/warehouse/MWH.GHOST/fulfillment")
+        .then()
+        .statusCode(200)
+        .body(containsString("[]"));
   }
 
   // --- DELETE ---

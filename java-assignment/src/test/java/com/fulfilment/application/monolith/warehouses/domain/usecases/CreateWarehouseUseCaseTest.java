@@ -198,4 +198,50 @@ public class CreateWarehouseUseCaseTest {
 
     assertNotNull(store.findById("MWH.SECOND"));
   }
+
+  @Test
+  void createWarehouse_blankLocation_returns400() {
+    var warehouse = newWarehouse("MWH.NEW", "   ", 10, 0);
+
+    var ex = assertThrows(WebApplicationException.class, () -> useCase.create(warehouse));
+
+    assertEquals(400, ex.getResponse().getStatus());
+  }
+
+  @Test
+  void createWarehouse_nullCapacity_returns400() {
+    var warehouse = new Warehouse();
+    warehouse.businessUnitCode = "MWH.NOCAP";
+    warehouse.location = "EINDHOVEN-001";
+    warehouse.capacity = null;
+    warehouse.stock = 0;
+
+    var ex = assertThrows(WebApplicationException.class, () -> useCase.create(warehouse));
+
+    assertEquals(400, ex.getResponse().getStatus());
+  }
+
+  @Test
+  void createWarehouse_cumulativeCapacity_secondExceedsLocationMax_returns400() {
+    // ZWOLLE-002: maxWarehouses=2, maxCapacity=50
+    // First warehouse uses 30, second requests 25 → 30+25=55 > 50 → reject
+    store.create(newWarehouse("MWH.FIRST", "ZWOLLE-002", 30, 0));
+
+    var second = newWarehouse("MWH.SECOND", "ZWOLLE-002", 25, 0);
+    var ex = assertThrows(WebApplicationException.class, () -> useCase.create(second));
+
+    assertEquals(400, ex.getResponse().getStatus());
+  }
+
+  @Test
+  void createWarehouse_cumulativeCapacity_secondExactlyFitsLocationMax_succeeds() {
+    // ZWOLLE-002: maxWarehouses=2, maxCapacity=50
+    // First warehouse uses 30, second requests 20 → 30+20=50 = 50 (not >) → accept
+    store.create(newWarehouse("MWH.FIRST", "ZWOLLE-002", 30, 0));
+
+    var second = newWarehouse("MWH.SECOND", "ZWOLLE-002", 20, 0);
+    useCase.create(second);
+
+    assertNotNull(store.findById("MWH.SECOND"));
+  }
 }

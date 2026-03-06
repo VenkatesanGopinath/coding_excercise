@@ -172,6 +172,124 @@ public class WarehouseEndpointTest {
         .statusCode(400);
   }
 
+  // --- POST /warehouse: additional validation ---
+
+  @Test
+  void create_missingCapacity_returns400() {
+    // capacity is null in JSON — use-case guard rejects it
+    String body =
+        """
+        {
+          "businessUnitCode": "MWH.NOCAP",
+          "location": "AMSTERDAM-001",
+          "stock": 0
+        }
+        """;
+    given()
+        .contentType(ContentType.JSON)
+        .body(body)
+        .when()
+        .post(PATH)
+        .then()
+        .statusCode(400);
+  }
+
+  @Test
+  void create_blankLocation_returns400() {
+    String body =
+        """
+        {
+          "businessUnitCode": "MWH.BLANKLOC",
+          "location": "   ",
+          "capacity": 20,
+          "stock": 0
+        }
+        """;
+    given()
+        .contentType(ContentType.JSON)
+        .body(body)
+        .when()
+        .post(PATH)
+        .then()
+        .statusCode(400);
+  }
+
+  // --- Lifecycle: create → archive → GET ---
+
+  @Test
+  void create_thenArchive_thenGetById_returns404() {
+    // Use a unique BUC to avoid interference with other tests.
+    // AMSTERDAM-001 allows up to 5 warehouses so there is capacity.
+    given()
+        .contentType(ContentType.JSON)
+        .body("""
+            {
+              "businessUnitCode": "MWH.LIFECYCLE",
+              "location": "AMSTERDAM-001",
+              "capacity": 10,
+              "stock": 0
+            }
+            """)
+        .when()
+        .post(PATH)
+        .then()
+        .statusCode(200);
+
+    given()
+        .when()
+        .delete(PATH + "/MWH.LIFECYCLE")
+        .then()
+        .statusCode(204);
+
+    given()
+        .when()
+        .get(PATH + "/MWH.LIFECYCLE")
+        .then()
+        .statusCode(404);
+  }
+
+  @Test
+  void create_sameBucAsArchivedWarehouse_succeeds() {
+    // BUC uniqueness is enforced only among ACTIVE warehouses.
+    // After archiving, the same BUC can be reused.
+    given()
+        .contentType(ContentType.JSON)
+        .body("""
+            {
+              "businessUnitCode": "MWH.REUSE",
+              "location": "AMSTERDAM-001",
+              "capacity": 10,
+              "stock": 0
+            }
+            """)
+        .when()
+        .post(PATH)
+        .then()
+        .statusCode(200);
+
+    given()
+        .when()
+        .delete(PATH + "/MWH.REUSE")
+        .then()
+        .statusCode(204);
+
+    // Creating the same BUC again must succeed
+    given()
+        .contentType(ContentType.JSON)
+        .body("""
+            {
+              "businessUnitCode": "MWH.REUSE",
+              "location": "AMSTERDAM-001",
+              "capacity": 10,
+              "stock": 0
+            }
+            """)
+        .when()
+        .post(PATH)
+        .then()
+        .statusCode(200);
+  }
+
   // --- GET /q/health/ready ---
 
   @Test

@@ -36,6 +36,11 @@ public class FulfillmentResource {
   public Response assign(
       @PathParam("businessUnitCode") String buc,
       @Valid FulfillmentRequest request) {
+    // @Valid on a static inner class body param does not fire in RESTEasy Reactive;
+    // guard explicitly so null fields return 400 instead of reaching Hibernate.
+    if (request == null || request.productId == null || request.storeId == null) {
+      throw new WebApplicationException("productId and storeId are required.", 400);
+    }
     LOG.infof("POST /warehouse/%s/fulfillment — assigning product=%d to store=%d",
         buc, request.productId, request.storeId);
     FulfillmentAssignment assignment =
