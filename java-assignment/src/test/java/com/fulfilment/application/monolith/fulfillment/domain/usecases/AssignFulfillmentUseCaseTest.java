@@ -1,0 +1,345 @@
+package com.fulfilment.application.monolith.fulfillment.domain.usecases;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import com.fulfilment.application.monolith.warehouses.domain.exceptions.DomainNotFoundException;
+import com.fulfilment.application.monolith.warehouses.domain.exceptions.DomainValidationException;
+import com.fulfilment.application.monolith.fulfillment.domain.models.FulfillmentAssignment;
+import com.fulfilment.application.monolith.fulfillment.domain.ports.FulfillmentStore;
+import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
+import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseStore;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+/**
+ * Pure unit tests for AssignFulfillmentUseCase.
+ * Uses in-memory stubs — no database, no CDI, runs in milliseconds.
+ */
+public class AssignFulfillmentUseCaseTest {
+
+  // ---------------------------------------------------------------------------
+  // In-memory stubs
+  // ---------------------------------------------------------------------------
+
+  static class InMemoryWarehouseStore implements WarehouseStore {
+
+    private final Set<String> activeBucs;
+
+    InMemoryWarehouseStore(Set<String> activeBucs) {
+      this.activeBucs = new HashSet<>(activeBucs);
+    }
+
+    @Override
+    public Warehouse findByBusinessUnitCode(String businessUnitCode) {
+      if (!activeBucs.contains(businessUnitCode)) return null;
+      var w = new Warehouse();
+      w.businessUnitCode = businessUnitCode;
+      return w;
+    }
+
+    @Override public List<Warehouse> getAll() { return List.of(); }
+    @Override public List<Warehouse> findByLocation(String location) { return List.of(); }
+    @Override public long countActive() { return activeBucs.size(); }
+    @Override public void create(Warehouse warehouse) {}
+    @Override public void update(Warehouse warehouse) {}
+    @Override public void remove(Warehouse warehouse) {}
+  }
+
+  static class InMemoryFulfillmentStore implements FulfillmentStore {
+
+    final Set<Long> existingProducts;
+    final Set<Long> existingStores;
+    final List<FulfillmentAssignment> assignments = new ArrayList<>();
+    private long idSeq = 1;
+
+    InMemoryFulfillmentStore(Set<Long> existingProducts, Set<Long> existingStores) {
+      this.existingProducts = new HashSet<>(existingProducts);
+      this.existingStores = new HashSet<>(existingStores);
+    }
+
+    @Override
+    public boolean productExists(Long id) {
+      return existingProducts.contains(id);
+    }
+
+    @Override
+    public boolean storeExists(Long id) {
+      return existingStores.contains(id);
+    }
+
+    @Override
+    public long countDistinctProductsForWarehouse(String buc) {
+      return assignments.stream()
+          .filter(a -> buc.equals(a.warehouseBusinessUnitCode))
+          .map(a -> a.productId)
+          .distinct()
+          .count();
+    }
+
+    @Override
+    public long countDistinctWarehousesForProductAndStore(Long productId, Long storeId) {
+      return assignments.stream()
+          .filter(a -> productId.equals(a.productId) && storeId.equals(a.storeId))
+          .map(a -> a.warehouseBusinessUnitCode)
+          .distinct()
+          .count();
+    }
+
+    @Override
+    public long countDistinctWarehousesForStore(Long storeId) {
+      return assignments.stream()
+          .filter(a -> storeId.equals(a.storeId))
+          .map(a -> a.warehouseBusinessUnitCode)
+          .distinct()
+          .count();
+    }
+
+    @Override
+    public FulfillmentAssignment assign(String buc, Long productId, Long storeId) {
+      var f = new FulfillmentAssignment();
+      f.id = idSeq++;
+      f.warehouseBusinessUnitCode = buc;
+      f.productId = productId;
+      f.storeId = storeId;
+      assignments.add(f);
+      return f;
+    }
+
+    @Override
+    public List<FulfillmentAssignment> findByWarehouse(String buc) {
+      return assignments.stream()
+          .filter(a -> buc.equals(a.warehouseBusinessUnitCode))
+          .toList();
+    }
+
+    @Override
+    public FulfillmentAssignment findAssignment(Long id, String buc) {
+      return assignments.stream()
+          .filter(a -> id.equals(a.id) && buc.equals(a.warehouseBusinessUnitCode))
+          .findFirst()
+          .orElse(null);
+    }
+
+    @Override
+    public void remove(Long id) {
+      assignments.removeIf(a -> id.equals(a.id));
+    }
+
+    @Override
+    public void removeByWarehouse(String buc) {
+      assignments.removeIf(a -> buc.equals(a.warehouseBusinessUnitCode));
+    }
+
+    /** Pre-loads assignments directly, bypassing the use case. */
+    void addAssignment(String buc, Long productId, Long storeId) {
+      var f = new FulfillmentAssignment();
+      f.id = idSeq++;
+      f.warehouseBusinessUnitCode = buc;
+      f.productId = productId;
+      f.storeId = storeId;
+      assignments.add(f);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Test setup
+  // ---------------------------------------------------------------------------
+
+  private InMemoryWarehouseStore warehouseStore;
+  private InMemoryFulfillmentStore store;
+  private AssignFulfillmentUseCase useCase;
+
+  @BeforeEach
+  void setUp() {
+    warehouseStore = new InMemoryWarehouseStore(
+        Set.of("MWH.001", "MWH.002", "MWH.003", "MWH.004"));
+    store = new InMemoryFulfillmentStore(
+        Set.of(1L, 2L, 3L, 4L, 5L, 6L),
+        Set.of(1L, 2L, 3L, 4L));
+    useCase = new AssignFulfillmentUseCase(warehouseStore, store);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Happy path
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void assign_happyPath_returnsAssignmentWithId() {
+    FulfillmentAssignment result = useCase.assign("MWH.001", 1L, 1L);
+
+    assertNotNull(result);
+    assertNotNull(result.id);
+    assertEquals("MWH.001", result.warehouseBusinessUnitCode);
+    assertEquals(1L, result.productId);
+    assertEquals(1L, result.storeId);
+    assertEquals(1, store.assignments.size());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Existence validation (404)
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void assign_inactiveWarehouse_returns404() {
+    assertThrows(DomainNotFoundException.class,
+        () -> useCase.assign("MWH.ARCHIVED", 1L, 1L));
+  }
+
+  @Test
+  void assign_nonExistentProduct_returns404() {
+    assertThrows(DomainNotFoundException.class,
+        () -> useCase.assign("MWH.001", 99L, 1L));
+  }
+
+  @Test
+  void assign_nonExistentStore_returns404() {
+    assertThrows(DomainNotFoundException.class,
+        () -> useCase.assign("MWH.001", 1L, 99L));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Constraint 3: Warehouse max 5 product types
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void assign_warehouseAlreadyHas5ProductTypes_returns400() {
+    store.addAssignment("MWH.001", 1L, 1L);
+    store.addAssignment("MWH.001", 2L, 1L);
+    store.addAssignment("MWH.001", 3L, 1L);
+    store.addAssignment("MWH.001", 4L, 1L);
+    store.addAssignment("MWH.001", 5L, 1L);
+
+    assertThrows(DomainValidationException.class,
+        () -> useCase.assign("MWH.001", 6L, 1L));
+  }
+
+  @Test
+  void assign_warehouseAt4ProductTypes_succeeds() {
+    store.addAssignment("MWH.001", 1L, 1L);
+    store.addAssignment("MWH.001", 2L, 1L);
+    store.addAssignment("MWH.001", 3L, 1L);
+    store.addAssignment("MWH.001", 4L, 1L);
+
+    FulfillmentAssignment result = useCase.assign("MWH.001", 5L, 1L);
+    assertNotNull(result);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Constraint 1: Product max 2 warehouses per store
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void assign_productAlreadyFulfilledBy2WarehousesForStore_returns400() {
+    store.addAssignment("MWH.001", 1L, 1L);
+    store.addAssignment("MWH.002", 1L, 1L);
+
+    assertThrows(DomainValidationException.class,
+        () -> useCase.assign("MWH.003", 1L, 1L));
+  }
+
+  @Test
+  void assign_productFulfilledBy1WarehouseForStore_succeeds() {
+    store.addAssignment("MWH.001", 1L, 1L);
+
+    FulfillmentAssignment result = useCase.assign("MWH.002", 1L, 1L);
+    assertNotNull(result);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Constraint 2: Store max 3 warehouses
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void assign_storeAlreadyFulfilledBy3Warehouses_returns400() {
+    store.addAssignment("MWH.001", 1L, 1L);
+    store.addAssignment("MWH.002", 2L, 1L);
+    store.addAssignment("MWH.003", 3L, 1L);
+
+    assertThrows(DomainValidationException.class,
+        () -> useCase.assign("MWH.004", 4L, 1L));
+  }
+
+  @Test
+  void assign_storeWith2Warehouses_succeeds() {
+    store.addAssignment("MWH.001", 1L, 1L);
+    store.addAssignment("MWH.002", 2L, 1L);
+
+    FulfillmentAssignment result = useCase.assign("MWH.003", 3L, 1L);
+    assertNotNull(result);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Constraint independence: different stores don't interfere
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void assign_sameProductAndWarehouse_differentStore_succeeds() {
+    store.addAssignment("MWH.001", 1L, 1L);
+    store.addAssignment("MWH.002", 1L, 1L);
+
+    FulfillmentAssignment result = useCase.assign("MWH.001", 1L, 2L);
+    assertNotNull(result);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Constraint priority ordering
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void assign_warehouseFullCheckedBeforeStoreConstraint_returns400() {
+    // Fill MWH.001 with 5 distinct product types → Constraint 3 triggers.
+    store.addAssignment("MWH.001", 1L, 1L);
+    store.addAssignment("MWH.001", 2L, 1L);
+    store.addAssignment("MWH.001", 3L, 1L);
+    store.addAssignment("MWH.001", 4L, 1L);
+    store.addAssignment("MWH.001", 5L, 1L);
+    store.addAssignment("MWH.002", 1L, 1L);
+    store.addAssignment("MWH.003", 2L, 1L);
+
+    assertThrows(DomainValidationException.class,
+        () -> useCase.assign("MWH.001", 6L, 1L));
+    // The assignment must NOT have been persisted
+    assertEquals(0, store.assignments.stream()
+        .filter(a -> "MWH.001".equals(a.warehouseBusinessUnitCode) && a.productId == 6L)
+        .count());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Duplicate assignment
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void assign_duplicateAssignment_sameWarehouseProductStore_secondSucceeds() {
+    useCase.assign("MWH.001", 1L, 1L);
+
+    FulfillmentAssignment second = useCase.assign("MWH.001", 1L, 1L);
+
+    assertNotNull(second);
+    assertEquals(2, store.assignments.size());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Constraint 1 triggered when product has exactly 2 warehouses for a store
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void assign_productAtConstraint1Limit_constraint1EnforcedNotConstraint3() {
+    // MWH.001 has 4 products (< 5 → constraint 3 clear)
+    store.addAssignment("MWH.001", 1L, 2L);
+    store.addAssignment("MWH.001", 2L, 2L);
+    store.addAssignment("MWH.001", 3L, 2L);
+    store.addAssignment("MWH.001", 4L, 2L);
+    // Product 5 already has 2 warehouses for store 2 → constraint 1 at limit
+    store.addAssignment("MWH.002", 5L, 2L);
+    store.addAssignment("MWH.003", 5L, 2L);
+
+    assertThrows(DomainValidationException.class,
+        () -> useCase.assign("MWH.001", 5L, 2L));
+  }
+}

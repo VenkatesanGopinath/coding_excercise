@@ -15,10 +15,25 @@ public class WarehouseRepository implements WarehouseStore, PanacheRepository<Db
 
   @Override
   public List<Warehouse> getAll() {
-    // Return only active (non-archived) warehouses
-    List<Warehouse> result = this.find("archivedAt is null").stream().map(DbWarehouse::toWarehouse).toList();
+    List<Warehouse> result = this.find("archivedAt is null").stream()
+        .map(DbWarehouse::toWarehouse).toList();
     LOG.debugf("getAll() returned %d active warehouses", result.size());
     return result;
+  }
+
+  @Override
+  public List<Warehouse> findByLocation(String location) {
+    // Targeted query — avoids loading all warehouses just to filter by location.
+    return this.find("location = ?1 and archivedAt is null", location)
+        .stream()
+        .map(DbWarehouse::toWarehouse)
+        .toList();
+  }
+
+  @Override
+  public long countActive() {
+    // COUNT(*) query — avoids materialising entities just to call .size().
+    return this.count("archivedAt is null");
   }
 
   @Override
@@ -66,14 +81,26 @@ public class WarehouseRepository implements WarehouseStore, PanacheRepository<Db
   }
 
   @Override
-  public Warehouse findByBusinessUnitCode(String buCode) {
-    Warehouse found = this.find("businessUnitCode = ?1 and archivedAt is null", buCode)
+  public Warehouse findByBusinessUnitCode(String businessUnitCode) {
+    Warehouse found = this.find("businessUnitCode = ?1 and archivedAt is null", businessUnitCode)
         .firstResultOptional()
         .map(DbWarehouse::toWarehouse)
         .orElse(null);
     if (found == null) {
-      LOG.debugf("No active warehouse found for buc='%s'", buCode);
+      LOG.debugf("No active warehouse found for buc='%s'", businessUnitCode);
     }
     return found;
+  }
+
+  /**
+   * Finds an active warehouse by its database primary key (the {id} path parameter from
+   * GET /warehouse/{id} and DELETE /warehouse/{id} per the OpenAPI spec).
+   * Returns null if not found or already archived.
+   */
+  public Warehouse findByDatabaseId(Long id) {
+    return this.findByIdOptional(id)
+        .filter(db -> db.archivedAt == null)
+        .map(DbWarehouse::toWarehouse)
+        .orElse(null);
   }
 }

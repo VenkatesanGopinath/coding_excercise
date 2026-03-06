@@ -1,5 +1,7 @@
 package com.fulfilment.application.monolith.warehouses.domain.usecases;
 
+import com.fulfilment.application.monolith.warehouses.domain.exceptions.DomainNotFoundException;
+import com.fulfilment.application.monolith.warehouses.domain.exceptions.DomainValidationException;
 import com.fulfilment.application.monolith.warehouses.domain.models.Location;
 import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
 import com.fulfilment.application.monolith.warehouses.domain.ports.LocationResolver;
@@ -7,7 +9,6 @@ import com.fulfilment.application.monolith.warehouses.domain.ports.ReplaceWareho
 import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseStore;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
-import jakarta.ws.rs.WebApplicationException;
 import java.time.LocalDateTime;
 import org.jboss.logging.Logger;
 
@@ -34,72 +35,74 @@ public class ReplaceWarehouseUseCase implements ReplaceWarehouseOperation {
     Warehouse oldWarehouse = warehouseStore.findByBusinessUnitCode(newWarehouse.businessUnitCode);
     if (oldWarehouse == null) {
       LOG.warnf("Replace rejected: no active warehouse found for buc='%s'", newWarehouse.businessUnitCode);
-      throw new WebApplicationException(
-          "Active warehouse '" + newWarehouse.businessUnitCode + "' not found.", 404);
+      throw new DomainNotFoundException(
+          "Active warehouse '" + newWarehouse.businessUnitCode + "' not found.");
     }
 
     // Validate the new warehouse's location
+    if (newWarehouse.location == null || newWarehouse.location.isBlank()) {
+      LOG.warnf("Replace rejected: location must not be blank");
+      throw new DomainValidationException("Location must not be blank.");
+    }
     Location location = locationResolver.resolveByIdentifier(newWarehouse.location);
     if (location == null) {
       LOG.warnf("Replace rejected: location '%s' is not valid", newWarehouse.location);
-      throw new WebApplicationException(
-          "Location '" + newWarehouse.location + "' is not valid.", 400);
+      throw new DomainValidationException(
+          "Location '" + newWarehouse.location + "' is not valid.");
     }
 
-    // When moving to a different location, that location must still have a free slot
+    // Use targeted query instead of loading all warehouses (avoids N+1)
     boolean movingToNewLocation = !newWarehouse.location.equals(oldWarehouse.location);
-    if (movingToNewLocation) {
-      long activeAtNewLocation =
-          warehouseStore.getAll().stream()
-              .filter(w -> newWarehouse.location.equals(w.location))
-              .count();
-      if (activeAtNewLocation >= location.maxNumberOfWarehouses) {
-        LOG.warnf("Replace rejected: max warehouses (%d) reached at new location '%s'",
-            location.maxNumberOfWarehouses, newWarehouse.location);
-        throw new WebApplicationException(
-            "Maximum number of warehouses already reached for location '"
-                + newWarehouse.location + "'.", 400);
-      }
+    long activeAtNewLocation = warehouseStore.findByLocation(newWarehouse.location).size();
+
+    // When moving to a different location, that location must still have a free slot
+    if (movingToNewLocation && activeAtNewLocation >= location.maxNumberOfWarehouses) {
+      LOG.warnf("Replace rejected: max warehouses (%d) reached at new location '%s'",
+          location.maxNumberOfWarehouses, newWarehouse.location);
+      throw new DomainValidationException(
+          "Maximum number of warehouses already reached for location '" + newWarehouse.location + "'.");
     }
 
     // New capacity must not push the new location over its total capacity limit.
     // If staying at the same location, the old warehouse's capacity is freed first.
-    long existingCapacityAtNewLocation =
-        warehouseStore.getAll().stream()
-            .filter(w -> newWarehouse.location.equals(w.location))
-            .mapToLong(w -> w.capacity != null ? w.capacity : 0)
-            .sum();
+    long existingCapacityAtNewLocation = warehouseStore.findByLocation(newWarehouse.location).stream()
+        .mapToLong(w -> w.capacity != null ? w.capacity : 0)
+        .sum();
     long effectiveExisting = movingToNewLocation
         ? existingCapacityAtNewLocation
         : existingCapacityAtNewLocation - (oldWarehouse.capacity != null ? oldWarehouse.capacity : 0);
     if (newWarehouse.capacity == null || effectiveExisting + newWarehouse.capacity > location.maxCapacity) {
       LOG.warnf("Replace rejected: new capacity %d would exceed max %d at location '%s'",
           newWarehouse.capacity, location.maxCapacity, newWarehouse.location);
-      throw new WebApplicationException(
+      throw new DomainValidationException(
           "Warehouse capacity would exceed the maximum allowed for location '"
-              + newWarehouse.location + "'.", 400);
+              + newWarehouse.location + "'.");
     }
 
-    // New warehouse capacity must be able to accommodate the old warehouse's stock
-    if (newWarehouse.capacity == null || newWarehouse.capacity < oldWarehouse.stock) {
+    // New warehouse capacity must be able to accommodate the old warehouse's stock.
+    // Null-safe: treat null stock as 0.
+    int oldStock = oldWarehouse.stock != null ? oldWarehouse.stock : 0;
+    if (newWarehouse.capacity == null || newWarehouse.capacity < oldStock) {
       LOG.warnf("Replace rejected: new capacity %d cannot accommodate old stock %d",
-          newWarehouse.capacity, oldWarehouse.stock);
-      throw new WebApplicationException(
+          newWarehouse.capacity, oldStock);
+      throw new DomainValidationException(
           "New warehouse capacity must be able to accommodate the stock of the replaced warehouse ("
-              + oldWarehouse.stock
-              + ").",
-          400);
+              + oldStock + ").");
+    }
+
+    // Stock of the new warehouse must not exceed its own capacity
+    if (newWarehouse.stock != null && newWarehouse.stock > newWarehouse.capacity) {
+      LOG.warnf("Replace rejected: new stock %d exceeds new capacity %d",
+          newWarehouse.stock, newWarehouse.capacity);
+      throw new DomainValidationException("Stock cannot exceed warehouse capacity.");
     }
 
     // Stock of the new warehouse must match the stock of the old warehouse
-    if (newWarehouse.stock == null || !newWarehouse.stock.equals(oldWarehouse.stock)) {
+    if (newWarehouse.stock == null || newWarehouse.stock != oldStock) {
       LOG.warnf("Replace rejected: new stock %d does not match old stock %d",
-          newWarehouse.stock, oldWarehouse.stock);
-      throw new WebApplicationException(
-          "New warehouse stock must match the replaced warehouse stock ("
-              + oldWarehouse.stock
-              + ").",
-          400);
+          newWarehouse.stock, oldStock);
+      throw new DomainValidationException(
+          "New warehouse stock must match the replaced warehouse stock (" + oldStock + ").");
     }
 
     // Archive the old warehouse

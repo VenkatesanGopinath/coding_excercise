@@ -2,11 +2,15 @@ package com.fulfilment.application.monolith.warehouses.domain.usecases;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fulfilment.application.monolith.warehouses.domain.exceptions.DomainNotFoundException;
+import com.fulfilment.application.monolith.fulfillment.domain.models.FulfillmentAssignment;
 import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
+import com.fulfilment.application.monolith.fulfillment.domain.ports.FulfillmentStore;
 import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseStore;
-import jakarta.ws.rs.WebApplicationException;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +27,18 @@ public class ArchiveWarehouseUseCaseTest {
     @Override
     public List<Warehouse> getAll() {
       return warehouses.stream().filter(w -> w.archivedAt == null).toList();
+    }
+
+    @Override
+    public List<Warehouse> findByLocation(String location) {
+      return warehouses.stream()
+          .filter(w -> location.equals(w.location) && w.archivedAt == null)
+          .toList();
+    }
+
+    @Override
+    public long countActive() {
+      return warehouses.stream().filter(w -> w.archivedAt == null).count();
     }
 
     @Override
@@ -47,21 +63,39 @@ public class ArchiveWarehouseUseCaseTest {
     }
 
     @Override
-    public Warehouse findByBusinessUnitCode(String buCode) {
+    public Warehouse findByBusinessUnitCode(String businessUnitCode) {
       return warehouses.stream()
-          .filter(w -> buCode.equals(w.businessUnitCode) && w.archivedAt == null)
+          .filter(w -> businessUnitCode.equals(w.businessUnitCode) && w.archivedAt == null)
           .findFirst()
           .orElse(null);
     }
   }
 
+  /** Minimal stub: tracks which BUCs were cascade-deleted. */
+  static class TrackingFulfillmentStore implements FulfillmentStore {
+    final List<String> removedBucs = new ArrayList<>();
+
+    @Override public boolean productExists(Long id) { return false; }
+    @Override public boolean storeExists(Long id) { return false; }
+    @Override public long countDistinctProductsForWarehouse(String buc) { return 0; }
+    @Override public long countDistinctWarehousesForProductAndStore(Long p, Long s) { return 0; }
+    @Override public long countDistinctWarehousesForStore(Long sid) { return 0; }
+    @Override public FulfillmentAssignment assign(String buc, Long p, Long s) { return null; }
+    @Override public List<FulfillmentAssignment> findByWarehouse(String buc) { return List.of(); }
+    @Override public FulfillmentAssignment findAssignment(Long id, String buc) { return null; }
+    @Override public void remove(Long id) {}
+    @Override public void removeByWarehouse(String buc) { removedBucs.add(buc); }
+  }
+
   private InMemoryWarehouseStore store;
+  private TrackingFulfillmentStore fulfillmentStore;
   private ArchiveWarehouseUseCase useCase;
 
   @BeforeEach
   void setUp() {
     store = new InMemoryWarehouseStore();
-    useCase = new ArchiveWarehouseUseCase(store);
+    fulfillmentStore = new TrackingFulfillmentStore();
+    useCase = new ArchiveWarehouseUseCase(store, fulfillmentStore);
   }
 
   @Test
@@ -73,13 +107,9 @@ public class ArchiveWarehouseUseCaseTest {
     active.stock = 5;
     store.create(active);
 
-    var toArchive = new Warehouse();
-    toArchive.businessUnitCode = "MWH.001";
-    useCase.archive(toArchive);
+    useCase.archive("MWH.001");
 
-    // After archive, the warehouse should not be findable as active
-    assertEquals(null, store.findByBusinessUnitCode("MWH.001"));
-    // But the archivedAt should be set on the stored record
+    assertNull(store.findByBusinessUnitCode("MWH.001"));
     var archived = store.warehouses.stream()
         .filter(w -> "MWH.001".equals(w.businessUnitCode))
         .findFirst()
@@ -89,13 +119,23 @@ public class ArchiveWarehouseUseCaseTest {
   }
 
   @Test
+  void archive_happyPath_fulfillmentAssignmentsCascadeRemoved() {
+    var active = new Warehouse();
+    active.businessUnitCode = "MWH.001";
+    active.location = "ZWOLLE-001";
+    active.capacity = 30;
+    active.stock = 5;
+    store.create(active);
+
+    useCase.archive("MWH.001");
+
+    assertEquals(1, fulfillmentStore.removedBucs.size());
+    assertEquals("MWH.001", fulfillmentStore.removedBucs.get(0));
+  }
+
+  @Test
   void archive_warehouseNotFound_returns404() {
-    var toArchive = new Warehouse();
-    toArchive.businessUnitCode = "MWH.NONEXISTENT";
-
-    var ex = assertThrows(WebApplicationException.class, () -> useCase.archive(toArchive));
-
-    assertEquals(404, ex.getResponse().getStatus());
+    assertThrows(DomainNotFoundException.class, () -> useCase.archive("MWH.NONEXISTENT"));
   }
 
   @Test
@@ -108,11 +148,47 @@ public class ArchiveWarehouseUseCaseTest {
     archived.archivedAt = java.time.LocalDateTime.now().minusDays(1);
     store.warehouses.add(archived);
 
-    var toArchive = new Warehouse();
-    toArchive.businessUnitCode = "MWH.001";
+    assertThrows(DomainNotFoundException.class, () -> useCase.archive("MWH.001"));
+  }
 
-    var ex = assertThrows(WebApplicationException.class, () -> useCase.archive(toArchive));
+  @Test
+  void archive_emptyStringId_returns404() {
+    assertThrows(DomainNotFoundException.class, () -> useCase.archive(""));
+  }
 
-    assertEquals(404, ex.getResponse().getStatus());
+  @Test
+  void archive_archivingTwice_secondAttemptReturns404() {
+    var active = new Warehouse();
+    active.businessUnitCode = "MWH.002";
+    active.location = "ZWOLLE-001";
+    active.capacity = 30;
+    active.stock = 5;
+    store.create(active);
+
+    useCase.archive("MWH.002");
+
+    assertThrows(DomainNotFoundException.class, () -> useCase.archive("MWH.002"));
+  }
+
+  @Test
+  void archive_archivedAtTimestampIsSet() {
+    var active = new Warehouse();
+    active.businessUnitCode = "MWH.003";
+    active.location = "ZWOLLE-001";
+    active.capacity = 30;
+    active.stock = 0;
+    store.create(active);
+
+    var before = java.time.LocalDateTime.now();
+    useCase.archive("MWH.003");
+    var after = java.time.LocalDateTime.now();
+
+    var record = store.warehouses.stream()
+        .filter(w -> "MWH.003".equals(w.businessUnitCode))
+        .findFirst()
+        .orElse(null);
+    assertNotNull(record);
+    assertNotNull(record.archivedAt);
+    assertTrue(!record.archivedAt.isBefore(before) && !record.archivedAt.isAfter(after));
   }
 }

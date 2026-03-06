@@ -1,11 +1,12 @@
 package com.fulfilment.application.monolith.warehouses.domain.usecases;
 
+import com.fulfilment.application.monolith.warehouses.domain.exceptions.DomainNotFoundException;
 import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
 import com.fulfilment.application.monolith.warehouses.domain.ports.ArchiveWarehouseOperation;
+import com.fulfilment.application.monolith.fulfillment.domain.ports.FulfillmentStore;
 import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseStore;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
-import jakarta.ws.rs.WebApplicationException;
 import java.time.LocalDateTime;
 import org.jboss.logging.Logger;
 
@@ -15,24 +16,31 @@ public class ArchiveWarehouseUseCase implements ArchiveWarehouseOperation {
   private static final Logger LOG = Logger.getLogger(ArchiveWarehouseUseCase.class);
 
   private final WarehouseStore warehouseStore;
+  private final FulfillmentStore fulfillmentStore;
 
-  public ArchiveWarehouseUseCase(WarehouseStore warehouseStore) {
+  public ArchiveWarehouseUseCase(WarehouseStore warehouseStore, FulfillmentStore fulfillmentStore) {
     this.warehouseStore = warehouseStore;
+    this.fulfillmentStore = fulfillmentStore;
   }
 
   @Override
   @Transactional
-  public void archive(Warehouse warehouse) {
-    LOG.infof("Archiving warehouse [buc=%s]", warehouse.businessUnitCode);
-    Warehouse existing = warehouseStore.findByBusinessUnitCode(warehouse.businessUnitCode);
+  public void archive(String businessUnitCode) {
+    LOG.infof("Archiving warehouse [buc=%s]", businessUnitCode);
+    Warehouse existing = warehouseStore.findByBusinessUnitCode(businessUnitCode);
     if (existing == null) {
-      LOG.warnf("Archive rejected: warehouse '%s' not found or already archived", warehouse.businessUnitCode);
-      throw new WebApplicationException(
-          "Warehouse '" + warehouse.businessUnitCode + "' not found or already archived.", 404);
+      LOG.warnf("Archive rejected: warehouse '%s' not found or already archived", businessUnitCode);
+      throw new DomainNotFoundException(
+          "Warehouse '" + businessUnitCode + "' not found or already archived.");
     }
 
     existing.archivedAt = LocalDateTime.now();
     warehouseStore.update(existing);
-    LOG.infof("Warehouse [buc=%s] archived successfully at %s", warehouse.businessUnitCode, existing.archivedAt);
+    LOG.infof("Warehouse [buc=%s] archived successfully at %s",
+        businessUnitCode, existing.archivedAt);
+
+    // Cascade: remove all fulfillment assignments pointing to this now-archived warehouse.
+    fulfillmentStore.removeByWarehouse(businessUnitCode);
+    LOG.infof("Fulfillment assignments for warehouse [buc=%s] removed", businessUnitCode);
   }
 }

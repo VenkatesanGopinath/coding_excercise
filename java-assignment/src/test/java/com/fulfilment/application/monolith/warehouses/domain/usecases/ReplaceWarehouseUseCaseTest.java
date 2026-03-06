@@ -4,12 +4,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fulfilment.application.monolith.location.LocationGateway;
+import com.fulfilment.application.monolith.warehouses.domain.exceptions.DomainNotFoundException;
+import com.fulfilment.application.monolith.warehouses.domain.exceptions.DomainValidationException;
 import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
 import com.fulfilment.application.monolith.warehouses.domain.ports.LocationResolver;
 import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseStore;
-import jakarta.ws.rs.WebApplicationException;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,6 +28,18 @@ public class ReplaceWarehouseUseCaseTest {
     @Override
     public List<Warehouse> getAll() {
       return warehouses.stream().filter(w -> w.archivedAt == null).toList();
+    }
+
+    @Override
+    public List<Warehouse> findByLocation(String location) {
+      return warehouses.stream()
+          .filter(w -> location.equals(w.location) && w.archivedAt == null)
+          .toList();
+    }
+
+    @Override
+    public long countActive() {
+      return warehouses.stream().filter(w -> w.archivedAt == null).count();
     }
 
     @Override
@@ -50,9 +64,9 @@ public class ReplaceWarehouseUseCaseTest {
     }
 
     @Override
-    public Warehouse findByBusinessUnitCode(String buCode) {
+    public Warehouse findByBusinessUnitCode(String businessUnitCode) {
       return warehouses.stream()
-          .filter(w -> buCode.equals(w.businessUnitCode) && w.archivedAt == null)
+          .filter(w -> businessUnitCode.equals(w.businessUnitCode) && w.archivedAt == null)
           .findFirst()
           .orElse(null);
     }
@@ -94,11 +108,10 @@ public class ReplaceWarehouseUseCaseTest {
     newWarehouse.businessUnitCode = "MWH.001";
     newWarehouse.location = "AMSTERDAM-001";
     newWarehouse.capacity = 60;
-    newWarehouse.stock = 20; // must match old stock
+    newWarehouse.stock = 20;
 
     useCase.replace(newWarehouse);
 
-    // Two records with MWH.001: one archived, one active
     var records = store.warehouses.stream()
         .filter(w -> "MWH.001".equals(w.businessUnitCode))
         .toList();
@@ -121,9 +134,20 @@ public class ReplaceWarehouseUseCaseTest {
     newWarehouse.capacity = 50;
     newWarehouse.stock = 10;
 
-    var ex = assertThrows(WebApplicationException.class, () -> useCase.replace(newWarehouse));
+    assertThrows(DomainNotFoundException.class, () -> useCase.replace(newWarehouse));
+  }
 
-    assertEquals(404, ex.getResponse().getStatus());
+  @Test
+  void replace_nullLocation_returns400() {
+    store.create(existingWarehouse("MWH.001", "AMSTERDAM-001", 50, 10));
+
+    var newWarehouse = new Warehouse();
+    newWarehouse.businessUnitCode = "MWH.001";
+    newWarehouse.location = null;
+    newWarehouse.capacity = 50;
+    newWarehouse.stock = 10;
+
+    assertThrows(DomainValidationException.class, () -> useCase.replace(newWarehouse));
   }
 
   @Test
@@ -136,9 +160,7 @@ public class ReplaceWarehouseUseCaseTest {
     newWarehouse.capacity = 50;
     newWarehouse.stock = 10;
 
-    var ex = assertThrows(WebApplicationException.class, () -> useCase.replace(newWarehouse));
-
-    assertEquals(400, ex.getResponse().getStatus());
+    assertThrows(DomainValidationException.class, () -> useCase.replace(newWarehouse));
   }
 
   @Test
@@ -148,12 +170,10 @@ public class ReplaceWarehouseUseCaseTest {
     var newWarehouse = new Warehouse();
     newWarehouse.businessUnitCode = "MWH.001";
     newWarehouse.location = "AMSTERDAM-001";
-    newWarehouse.capacity = 20; // < old stock of 30
+    newWarehouse.capacity = 20;
     newWarehouse.stock = 30;
 
-    var ex = assertThrows(WebApplicationException.class, () -> useCase.replace(newWarehouse));
-
-    assertEquals(400, ex.getResponse().getStatus());
+    assertThrows(DomainValidationException.class, () -> useCase.replace(newWarehouse));
   }
 
   @Test
@@ -166,16 +186,13 @@ public class ReplaceWarehouseUseCaseTest {
     newWarehouse.capacity = 60;
     newWarehouse.stock = 25; // does not match old stock of 30
 
-    var ex = assertThrows(WebApplicationException.class, () -> useCase.replace(newWarehouse));
-
-    assertEquals(400, ex.getResponse().getStatus());
+    assertThrows(DomainValidationException.class, () -> useCase.replace(newWarehouse));
   }
 
   // --- Boundary value tests ---
 
   @Test
   void replace_capacityExactlyMatchingOldStock_succeeds() {
-    // new capacity == old stock is the minimum valid capacity — should pass (not < old stock)
     store.create(existingWarehouse("MWH.001", "AMSTERDAM-001", 50, 20));
 
     var newWarehouse = new Warehouse();
@@ -186,11 +203,9 @@ public class ReplaceWarehouseUseCaseTest {
 
     useCase.replace(newWarehouse);
 
-    var active =
-        store.warehouses.stream()
-            .filter(w -> "MWH.001".equals(w.businessUnitCode) && w.archivedAt == null)
-            .findFirst()
-            .orElse(null);
+    var active = store.warehouses.stream()
+        .filter(w -> "MWH.001".equals(w.businessUnitCode) && w.archivedAt == null)
+        .findFirst().orElse(null);
     assertNotNull(active);
     assertEquals(20, active.capacity);
   }
@@ -207,8 +222,7 @@ public class ReplaceWarehouseUseCaseTest {
     newWarehouse.capacity = 35;
     newWarehouse.stock = 10;
 
-    var ex = assertThrows(WebApplicationException.class, () -> useCase.replace(newWarehouse));
-    assertEquals(400, ex.getResponse().getStatus());
+    assertThrows(DomainValidationException.class, () -> useCase.replace(newWarehouse));
   }
 
   @Test
@@ -222,13 +236,11 @@ public class ReplaceWarehouseUseCaseTest {
     newWarehouse.capacity = 46; // exceeds HELMOND-001 max of 45
     newWarehouse.stock = 30;
 
-    var ex = assertThrows(WebApplicationException.class, () -> useCase.replace(newWarehouse));
-    assertEquals(400, ex.getResponse().getStatus());
+    assertThrows(DomainValidationException.class, () -> useCase.replace(newWarehouse));
   }
 
   @Test
   void replace_differentValidLocation_succeeds() {
-    // Replacing to a different valid location is allowed
     store.create(existingWarehouse("MWH.001", "AMSTERDAM-001", 50, 20));
 
     var newWarehouse = new Warehouse();
@@ -239,12 +251,118 @@ public class ReplaceWarehouseUseCaseTest {
 
     useCase.replace(newWarehouse);
 
-    var active =
-        store.warehouses.stream()
-            .filter(w -> "MWH.001".equals(w.businessUnitCode) && w.archivedAt == null)
-            .findFirst()
-            .orElse(null);
+    var active = store.warehouses.stream()
+        .filter(w -> "MWH.001".equals(w.businessUnitCode) && w.archivedAt == null)
+        .findFirst().orElse(null);
     assertNotNull(active);
     assertEquals("HELMOND-001", active.location);
+  }
+
+  // --- Same-location capacity checks ---
+
+  @Test
+  void replace_sameLocation_newCapacityExceedsRemainingLocationCapacity_returns400() {
+    // ZWOLLE-002: maxWarehouses=2, maxCapacity=50
+    // Other warehouse occupies 30; old warehouse occupies 15 → effective remaining = 50 - 30 = 20
+    // New warehouse requests 25 → 30 + 25 = 55 > 50 → reject
+    store.create(existingWarehouse("MWH.OTHER", "ZWOLLE-002", 30, 0));
+    store.create(existingWarehouse("MWH.001", "ZWOLLE-002", 15, 10));
+
+    var newWarehouse = new Warehouse();
+    newWarehouse.businessUnitCode = "MWH.001";
+    newWarehouse.location = "ZWOLLE-002";
+    newWarehouse.capacity = 25;
+    newWarehouse.stock = 10;
+
+    assertThrows(DomainValidationException.class, () -> useCase.replace(newWarehouse));
+  }
+
+  @Test
+  void replace_sameLocation_newCapacityExactlyAtRemainingLocationCapacity_succeeds() {
+    // ZWOLLE-002: maxWarehouses=2, maxCapacity=50
+    // Other warehouse occupies 30; old occupies 15 → effective remaining = 50 - 30 = 20
+    // New warehouse requests 20 → 30 + 20 = 50, not > 50 → accept
+    store.create(existingWarehouse("MWH.OTHER", "ZWOLLE-002", 30, 0));
+    store.create(existingWarehouse("MWH.001", "ZWOLLE-002", 15, 10));
+
+    var newWarehouse = new Warehouse();
+    newWarehouse.businessUnitCode = "MWH.001";
+    newWarehouse.location = "ZWOLLE-002";
+    newWarehouse.capacity = 20;
+    newWarehouse.stock = 10;
+
+    useCase.replace(newWarehouse);
+
+    var active = store.warehouses.stream()
+        .filter(w -> "MWH.001".equals(w.businessUnitCode) && w.archivedAt == null)
+        .findFirst().orElse(null);
+    assertNotNull(active);
+    assertEquals(20, active.capacity);
+  }
+
+  // --- Timestamp verification ---
+
+  @Test
+  void replace_oldWarehouseHasArchivedAtTimestampSet() {
+    store.create(existingWarehouse("MWH.001", "AMSTERDAM-001", 50, 20));
+
+    var newWarehouse = new Warehouse();
+    newWarehouse.businessUnitCode = "MWH.001";
+    newWarehouse.location = "AMSTERDAM-001";
+    newWarehouse.capacity = 60;
+    newWarehouse.stock = 20;
+
+    var before = java.time.LocalDateTime.now();
+    useCase.replace(newWarehouse);
+    var after = java.time.LocalDateTime.now();
+
+    var old = store.warehouses.stream()
+        .filter(w -> "MWH.001".equals(w.businessUnitCode) && w.archivedAt != null)
+        .findFirst().orElse(null);
+    assertNotNull(old);
+    assertNotNull(old.archivedAt);
+    assertTrue(!old.archivedAt.isBefore(before) && !old.archivedAt.isAfter(after));
+  }
+
+  @Test
+  void replace_newWarehouseHasCreatedAtTimestampSet() {
+    store.create(existingWarehouse("MWH.001", "AMSTERDAM-001", 50, 20));
+
+    var newWarehouse = new Warehouse();
+    newWarehouse.businessUnitCode = "MWH.001";
+    newWarehouse.location = "AMSTERDAM-001";
+    newWarehouse.capacity = 60;
+    newWarehouse.stock = 20;
+
+    var before = java.time.LocalDateTime.now();
+    useCase.replace(newWarehouse);
+    var after = java.time.LocalDateTime.now();
+
+    var created = store.warehouses.stream()
+        .filter(w -> "MWH.001".equals(w.businessUnitCode) && w.archivedAt == null)
+        .findFirst().orElse(null);
+    assertNotNull(created);
+    assertNotNull(created.createdAt);
+    assertTrue(!created.createdAt.isBefore(before) && !created.createdAt.isAfter(after));
+  }
+
+  // --- BUC re-use after replacement ---
+
+  @Test
+  void replace_oldWarehouseInactiveFindByIdReturnsNewOne() {
+    store.create(existingWarehouse("MWH.001", "AMSTERDAM-001", 50, 20));
+
+    var newWarehouse = new Warehouse();
+    newWarehouse.businessUnitCode = "MWH.001";
+    newWarehouse.location = "AMSTERDAM-001";
+    newWarehouse.capacity = 60;
+    newWarehouse.stock = 20;
+
+    useCase.replace(newWarehouse);
+
+    var found = store.findByBusinessUnitCode("MWH.001");
+    assertNotNull(found);
+    assertNull(found.archivedAt);
+    assertEquals(60, found.capacity);
   }
 }

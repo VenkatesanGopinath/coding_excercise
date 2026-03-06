@@ -93,7 +93,7 @@ public class WarehouseRepositoryTest {
     toArchive.archivedAt = LocalDateTime.now();
     repository.update(toArchive);
 
-    // Must not appear in getAll() and findByBusinessUnitCode must return null
+    // Must not appear in getAll() and findById must return null
     assertNull(repository.findByBusinessUnitCode("TEST.UPDATE"));
     assertTrue(repository.getAll().stream().noneMatch(w -> "TEST.UPDATE".equals(w.businessUnitCode)));
   }
