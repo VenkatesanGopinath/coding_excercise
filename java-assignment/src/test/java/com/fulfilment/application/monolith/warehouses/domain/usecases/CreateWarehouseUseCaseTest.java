@@ -47,9 +47,9 @@ public class CreateWarehouseUseCaseTest {
     }
 
     @Override
-    public Warehouse findByBusinessUnitCode(String buCode) {
+    public Warehouse findById(String id) {
       return warehouses.stream()
-          .filter(w -> buCode.equals(w.businessUnitCode) && w.archivedAt == null)
+          .filter(w -> id.equals(w.businessUnitCode) && w.archivedAt == null)
           .findFirst()
           .orElse(null);
     }
@@ -94,7 +94,7 @@ public class CreateWarehouseUseCaseTest {
 
     useCase.create(warehouse);
 
-    assertNotNull(store.findByBusinessUnitCode("MWH.NEW"));
+    assertNotNull(store.findById("MWH.NEW"));
     assertNotNull(warehouse.createdAt);
   }
 
@@ -165,7 +165,7 @@ public class CreateWarehouseUseCaseTest {
 
     useCase.create(warehouse);
 
-    assertNotNull(store.findByBusinessUnitCode("MWH.EXACT"));
+    assertNotNull(store.findById("MWH.EXACT"));
   }
 
   @Test
@@ -185,7 +185,7 @@ public class CreateWarehouseUseCaseTest {
 
     useCase.create(warehouse);
 
-    assertNotNull(store.findByBusinessUnitCode("MWH.ZERO"));
+    assertNotNull(store.findById("MWH.ZERO"));
   }
 
   @Test
@@ -196,6 +196,6 @@ public class CreateWarehouseUseCaseTest {
     var second = newWarehouse("MWH.SECOND", "ZWOLLE-002", 20, 0);
     useCase.create(second);
 
-    assertNotNull(store.findByBusinessUnitCode("MWH.SECOND"));
+    assertNotNull(store.findById("MWH.SECOND"));
   }
 }

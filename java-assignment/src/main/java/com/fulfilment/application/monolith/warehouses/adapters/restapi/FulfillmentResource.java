@@ -6,6 +6,8 @@ import com.fulfilment.application.monolith.warehouses.domain.ports.FulfillmentSt
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
@@ -33,7 +35,7 @@ public class FulfillmentResource {
   @POST
   public Response assign(
       @PathParam("businessUnitCode") String buc,
-      FulfillmentRequest request) {
+      @Valid FulfillmentRequest request) {
     LOG.infof("POST /warehouse/%s/fulfillment — assigning product=%d to store=%d",
         buc, request.productId, request.storeId);
     FulfillmentAssignment assignment =
@@ -66,7 +68,7 @@ public class FulfillmentResource {
   }
 
   public static class FulfillmentRequest {
-    public Long productId;
-    public Long storeId;
+    @NotNull public Long productId;
+    @NotNull public Long storeId;
   }
 }

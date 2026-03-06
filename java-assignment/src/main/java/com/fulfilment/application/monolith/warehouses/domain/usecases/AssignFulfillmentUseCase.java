@@ -32,7 +32,7 @@ public class AssignFulfillmentUseCase implements AssignFulfillmentOperation {
     LOG.infof("Assigning fulfillment [warehouse=%s, product=%d, store=%d]",
         warehouseBuc, productId, storeId);
 
-    if (warehouseStore.findByBusinessUnitCode(warehouseBuc) == null) {
+    if (warehouseStore.findById(warehouseBuc) == null) {
       LOG.warnf("Assignment rejected: warehouse '%s' not found or archived", warehouseBuc);
       throw new WebApplicationException(
           "Warehouse '" + warehouseBuc + "' not found or not active.", 404);

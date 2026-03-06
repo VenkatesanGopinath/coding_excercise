@@ -9,6 +9,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.WebApplicationException;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.jboss.logging.Logger;
 
 @ApplicationScoped
@@ -31,7 +32,7 @@ public class CreateWarehouseUseCase implements CreateWarehouseOperation {
         warehouse.businessUnitCode, warehouse.location, warehouse.capacity);
 
     // 1. Business Unit Code must be unique among active warehouses
-    if (warehouseStore.findByBusinessUnitCode(warehouse.businessUnitCode) != null) {
+    if (warehouseStore.findById(warehouse.businessUnitCode) != null) {
       LOG.warnf("Creation rejected: BUC '%s' already exists", warehouse.businessUnitCode);
       throw new WebApplicationException(
           "Business Unit Code '" + warehouse.businessUnitCode + "' already exists.", 400);
@@ -49,12 +50,14 @@ public class CreateWarehouseUseCase implements CreateWarehouseOperation {
           "Location '" + warehouse.location + "' is not valid.", 400);
     }
 
-    // 3. Location must not have reached its max number of active warehouses
-    long activeAtLocation =
+    // 3. & 4. Fetch all active warehouses at this location once
+    List<Warehouse> atSameLocation =
         warehouseStore.getAll().stream()
             .filter(w -> warehouse.location.equals(w.location))
-            .count();
-    if (activeAtLocation >= location.maxNumberOfWarehouses) {
+            .toList();
+
+    // 3. Location must not have reached its max number of active warehouses
+    if (atSameLocation.size() >= location.maxNumberOfWarehouses) {
       LOG.warnf("Creation rejected: max warehouses (%d) reached at location '%s'",
           location.maxNumberOfWarehouses, warehouse.location);
       throw new WebApplicationException(
@@ -66,8 +69,7 @@ public class CreateWarehouseUseCase implements CreateWarehouseOperation {
 
     // 4. Total capacity at the location (existing + new) must not exceed the location's max
     long existingTotalCapacity =
-        warehouseStore.getAll().stream()
-            .filter(w -> warehouse.location.equals(w.location))
+        atSameLocation.stream()
             .mapToLong(w -> w.capacity != null ? w.capacity : 0)
             .sum();
     if (warehouse.capacity == null || existingTotalCapacity + warehouse.capacity > location.maxCapacity) {

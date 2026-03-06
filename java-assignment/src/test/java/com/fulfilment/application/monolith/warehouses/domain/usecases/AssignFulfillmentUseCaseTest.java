@@ -35,10 +35,10 @@ public class AssignFulfillmentUseCaseTest {
     }
 
     @Override
-    public Warehouse findByBusinessUnitCode(String buCode) {
-      if (!activeBucs.contains(buCode)) return null;
+    public Warehouse findById(String id) {
+      if (!activeBucs.contains(id)) return null;
       var w = new Warehouse();
-      w.businessUnitCode = buCode;
+      w.businessUnitCode = id;
       return w;
     }
 

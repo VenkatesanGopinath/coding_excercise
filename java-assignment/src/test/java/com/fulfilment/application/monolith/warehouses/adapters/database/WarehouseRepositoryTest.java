@@ -52,7 +52,7 @@ public class WarehouseRepositoryTest {
     repository.create(makeWarehouse("TEST.TO_ARCHIVE", "EINDHOVEN-001", 20, 0));
 
     // Archive the second one
-    var toArchive = repository.findByBusinessUnitCode("TEST.TO_ARCHIVE");
+    var toArchive = repository.findById("TEST.TO_ARCHIVE");
     assertNotNull(toArchive);
     toArchive.archivedAt = LocalDateTime.now();
     repository.update(toArchive);
@@ -71,7 +71,7 @@ public class WarehouseRepositoryTest {
 
     repository.create(warehouse);
 
-    var found = repository.findByBusinessUnitCode("TEST.CREATE");
+    var found = repository.findById("TEST.CREATE");
     assertNotNull(found);
     assertEquals("TEST.CREATE", found.businessUnitCode);
     assertEquals("EINDHOVEN-001", found.location);
@@ -88,35 +88,35 @@ public class WarehouseRepositoryTest {
   void update_setsArchivedAt_makesWarehouseInvisibleToGetAll() {
     repository.create(makeWarehouse("TEST.UPDATE", "EINDHOVEN-001", 20, 0));
 
-    var toArchive = repository.findByBusinessUnitCode("TEST.UPDATE");
+    var toArchive = repository.findById("TEST.UPDATE");
     assertNotNull(toArchive);
     toArchive.archivedAt = LocalDateTime.now();
     repository.update(toArchive);
 
-    // Must not appear in getAll() and findByBusinessUnitCode must return null
-    assertNull(repository.findByBusinessUnitCode("TEST.UPDATE"));
+    // Must not appear in getAll() and findById must return null
+    assertNull(repository.findById("TEST.UPDATE"));
     assertTrue(repository.getAll().stream().noneMatch(w -> "TEST.UPDATE".equals(w.businessUnitCode)));
   }
 
-  // --- findByBusinessUnitCode() ---
+  // --- findById() ---
 
   @Test
   @TestTransaction
-  void findByBusinessUnitCode_returnsNullForNonExistent() {
-    assertNull(repository.findByBusinessUnitCode("DOES.NOT.EXIST"));
+  void findById_returnsNullForNonExistent() {
+    assertNull(repository.findById("DOES.NOT.EXIST"));
   }
 
   @Test
   @TestTransaction
-  void findByBusinessUnitCode_returnsNullForArchivedWarehouse() {
+  void findById_returnsNullForArchivedWarehouse() {
     repository.create(makeWarehouse("TEST.FINDARCHIVED", "EINDHOVEN-001", 20, 0));
 
     // Archive it
-    var w = repository.findByBusinessUnitCode("TEST.FINDARCHIVED");
+    var w = repository.findById("TEST.FINDARCHIVED");
     w.archivedAt = LocalDateTime.now();
     repository.update(w);
 
     // After archiving, lookup by BUC must return null (only active warehouses are returned)
-    assertNull(repository.findByBusinessUnitCode("TEST.FINDARCHIVED"));
+    assertNull(repository.findById("TEST.FINDARCHIVED"));
   }
 }

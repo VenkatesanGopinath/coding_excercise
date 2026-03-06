@@ -40,7 +40,7 @@ public class WarehouseResourceImpl implements WarehouseResource {
   @Override
   public Warehouse getAWarehouseUnitByID(String id) {
     LOG.debugf("GET /warehouse/%s", id);
-    var warehouse = warehouseRepository.findByBusinessUnitCode(id);
+    var warehouse = warehouseRepository.findById(id);
     if (warehouse == null) {
       LOG.warnf("GET /warehouse/%s — not found", id);
       throw new WebApplicationException("Warehouse '" + id + "' not found.", 404);
@@ -51,9 +51,7 @@ public class WarehouseResourceImpl implements WarehouseResource {
   @Override
   public void archiveAWarehouseUnitByID(String id) {
     LOG.infof("DELETE /warehouse/%s — archiving", id);
-    var warehouse = new com.fulfilment.application.monolith.warehouses.domain.models.Warehouse();
-    warehouse.businessUnitCode = id;
-    archiveWarehouseOperation.archive(warehouse);
+    archiveWarehouseOperation.archive(id);
   }
 
   @Override

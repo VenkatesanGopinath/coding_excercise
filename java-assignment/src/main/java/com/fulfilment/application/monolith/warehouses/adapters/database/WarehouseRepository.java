@@ -66,13 +66,13 @@ public class WarehouseRepository implements WarehouseStore, PanacheRepository<Db
   }
 
   @Override
-  public Warehouse findByBusinessUnitCode(String buCode) {
-    Warehouse found = this.find("businessUnitCode = ?1 and archivedAt is null", buCode)
+  public Warehouse findById(String id) {
+    Warehouse found = this.find("businessUnitCode = ?1 and archivedAt is null", id)
         .firstResultOptional()
         .map(DbWarehouse::toWarehouse)
         .orElse(null);
     if (found == null) {
-      LOG.debugf("No active warehouse found for buc='%s'", buCode);
+      LOG.debugf("No active warehouse found for id='%s'", id);
     }
     return found;
   }

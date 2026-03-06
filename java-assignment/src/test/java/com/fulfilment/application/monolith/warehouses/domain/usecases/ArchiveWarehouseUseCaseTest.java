@@ -47,9 +47,9 @@ public class ArchiveWarehouseUseCaseTest {
     }
 
     @Override
-    public Warehouse findByBusinessUnitCode(String buCode) {
+    public Warehouse findById(String id) {
       return warehouses.stream()
-          .filter(w -> buCode.equals(w.businessUnitCode) && w.archivedAt == null)
+          .filter(w -> id.equals(w.businessUnitCode) && w.archivedAt == null)
           .findFirst()
           .orElse(null);
     }
@@ -73,12 +73,10 @@ public class ArchiveWarehouseUseCaseTest {
     active.stock = 5;
     store.create(active);
 
-    var toArchive = new Warehouse();
-    toArchive.businessUnitCode = "MWH.001";
-    useCase.archive(toArchive);
+    useCase.archive("MWH.001");
 
     // After archive, the warehouse should not be findable as active
-    assertEquals(null, store.findByBusinessUnitCode("MWH.001"));
+    assertEquals(null, store.findById("MWH.001"));
     // But the archivedAt should be set on the stored record
     var archived = store.warehouses.stream()
         .filter(w -> "MWH.001".equals(w.businessUnitCode))
@@ -90,10 +88,7 @@ public class ArchiveWarehouseUseCaseTest {
 
   @Test
   void archive_warehouseNotFound_returns404() {
-    var toArchive = new Warehouse();
-    toArchive.businessUnitCode = "MWH.NONEXISTENT";
-
-    var ex = assertThrows(WebApplicationException.class, () -> useCase.archive(toArchive));
+    var ex = assertThrows(WebApplicationException.class, () -> useCase.archive("MWH.NONEXISTENT"));
 
     assertEquals(404, ex.getResponse().getStatus());
   }
@@ -108,10 +103,7 @@ public class ArchiveWarehouseUseCaseTest {
     archived.archivedAt = java.time.LocalDateTime.now().minusDays(1);
     store.warehouses.add(archived);
 
-    var toArchive = new Warehouse();
-    toArchive.businessUnitCode = "MWH.001";
-
-    var ex = assertThrows(WebApplicationException.class, () -> useCase.archive(toArchive));
+    var ex = assertThrows(WebApplicationException.class, () -> useCase.archive("MWH.001"));
 
     assertEquals(404, ex.getResponse().getStatus());
   }

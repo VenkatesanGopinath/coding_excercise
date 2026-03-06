@@ -22,17 +22,17 @@ public class ArchiveWarehouseUseCase implements ArchiveWarehouseOperation {
 
   @Override
   @Transactional
-  public void archive(Warehouse warehouse) {
-    LOG.infof("Archiving warehouse [buc=%s]", warehouse.businessUnitCode);
-    Warehouse existing = warehouseStore.findByBusinessUnitCode(warehouse.businessUnitCode);
+  public void archive(String id) {
+    LOG.infof("Archiving warehouse [buc=%s]", id);
+    Warehouse existing = warehouseStore.findById(id);
     if (existing == null) {
-      LOG.warnf("Archive rejected: warehouse '%s' not found or already archived", warehouse.businessUnitCode);
+      LOG.warnf("Archive rejected: warehouse '%s' not found or already archived", id);
       throw new WebApplicationException(
-          "Warehouse '" + warehouse.businessUnitCode + "' not found or already archived.", 404);
+          "Warehouse '" + id + "' not found or already archived.", 404);
     }
 
     existing.archivedAt = LocalDateTime.now();
     warehouseStore.update(existing);
-    LOG.infof("Warehouse [buc=%s] archived successfully at %s", warehouse.businessUnitCode, existing.archivedAt);
+    LOG.infof("Warehouse [buc=%s] archived successfully at %s", id, existing.archivedAt);
   }
 }

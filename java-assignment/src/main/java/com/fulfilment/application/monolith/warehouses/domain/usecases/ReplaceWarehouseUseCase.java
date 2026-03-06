@@ -31,7 +31,7 @@ public class ReplaceWarehouseUseCase implements ReplaceWarehouseOperation {
         newWarehouse.businessUnitCode, newWarehouse.location, newWarehouse.capacity);
 
     // The old warehouse is identified by the same businessUnitCode
-    Warehouse oldWarehouse = warehouseStore.findByBusinessUnitCode(newWarehouse.businessUnitCode);
+    Warehouse oldWarehouse = warehouseStore.findById(newWarehouse.businessUnitCode);
     if (oldWarehouse == null) {
       LOG.warnf("Replace rejected: no active warehouse found for buc='%s'", newWarehouse.businessUnitCode);
       throw new WebApplicationException(
@@ -93,6 +93,13 @@ public class ReplaceWarehouseUseCase implements ReplaceWarehouseOperation {
               + oldWarehouse.stock
               + ").",
           400);
+    }
+
+    // Stock of the new warehouse must not exceed its own capacity
+    if (newWarehouse.stock != null && newWarehouse.stock > newWarehouse.capacity) {
+      LOG.warnf("Replace rejected: new stock %d exceeds new capacity %d",
+          newWarehouse.stock, newWarehouse.capacity);
+      throw new WebApplicationException("Stock cannot exceed warehouse capacity.", 400);
     }
 
     // Stock of the new warehouse must match the stock of the old warehouse

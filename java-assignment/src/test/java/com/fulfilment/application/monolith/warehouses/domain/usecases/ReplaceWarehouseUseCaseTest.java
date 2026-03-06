@@ -50,9 +50,9 @@ public class ReplaceWarehouseUseCaseTest {
     }
 
     @Override
-    public Warehouse findByBusinessUnitCode(String buCode) {
+    public Warehouse findById(String id) {
       return warehouses.stream()
-          .filter(w -> buCode.equals(w.businessUnitCode) && w.archivedAt == null)
+          .filter(w -> id.equals(w.businessUnitCode) && w.archivedAt == null)
           .findFirst()
           .orElse(null);
     }
