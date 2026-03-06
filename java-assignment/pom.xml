@@ -43,6 +43,19 @@
             <artifactId>quarkus-jdbc-postgresql</artifactId>
         </dependency>
 
+
+        <!-- Security: HTTP Basic Auth with embedded identity provider -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-elytron-security-properties-file</artifactId>
+        </dependency>
+        <!-- Test: @TestSecurity bypasses real auth in @QuarkusTest without modifying requests -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-test-security</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Testing: -->
         <dependency>
             <groupId>io.quarkus</groupId>
