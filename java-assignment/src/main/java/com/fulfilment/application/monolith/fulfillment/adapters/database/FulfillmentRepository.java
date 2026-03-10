@@ -6,8 +6,6 @@ import com.fulfilment.application.monolith.products.Product;
 import com.fulfilment.application.monolith.stores.Store;
 import io.quarkus.hibernate.orm.panache.PanacheRepository;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
-import jakarta.persistence.EntityManager;
 import java.util.List;
 import org.jboss.logging.Logger;
 
@@ -16,21 +14,23 @@ public class FulfillmentRepository implements FulfillmentStore, PanacheRepositor
 
   private static final Logger LOG = Logger.getLogger(FulfillmentRepository.class);
 
-  @Inject EntityManager em;
-
   @Override
   public boolean productExists(Long productId) {
-    return em.find(Product.class, productId) != null;
+    // Product is a plain JPA entity; use Panache's getEntityManager() rather than injecting one.
+    return getEntityManager().find(Product.class, productId) != null;
   }
 
   @Override
   public boolean storeExists(Long storeId) {
-    return em.find(Store.class, storeId) != null;
+    // Store extends PanacheEntity — use its static finder directly.
+    return Store.findById(storeId) != null;
   }
 
   @Override
   public long countDistinctProductsForWarehouse(String warehouseBuc) {
-    return em.createQuery(
+    // COUNT(DISTINCT ...) is not supported by Panache's built-in count(); use JPQL via
+    // Panache's getEntityManager() — no separate @Inject EntityManager needed.
+    return getEntityManager().createQuery(
             "SELECT COUNT(DISTINCT f.productId) FROM DbFulfillmentAssignment f "
                 + "WHERE f.warehouseBusinessUnitCode = :buc",
             Long.class)
@@ -40,7 +40,7 @@ public class FulfillmentRepository implements FulfillmentStore, PanacheRepositor
 
   @Override
   public long countDistinctWarehousesForProductAndStore(Long productId, Long storeId) {
-    return em.createQuery(
+    return getEntityManager().createQuery(
             "SELECT COUNT(DISTINCT f.warehouseBusinessUnitCode) FROM DbFulfillmentAssignment f "
                 + "WHERE f.productId = :pid AND f.storeId = :sid",
             Long.class)
@@ -51,7 +51,7 @@ public class FulfillmentRepository implements FulfillmentStore, PanacheRepositor
 
   @Override
   public long countDistinctWarehousesForStore(Long storeId) {
-    return em.createQuery(
+    return getEntityManager().createQuery(
             "SELECT COUNT(DISTINCT f.warehouseBusinessUnitCode) FROM DbFulfillmentAssignment f "
                 + "WHERE f.storeId = :sid",
             Long.class)

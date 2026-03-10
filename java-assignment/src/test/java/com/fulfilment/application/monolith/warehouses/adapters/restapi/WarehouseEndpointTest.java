@@ -339,6 +339,72 @@ public class WarehouseEndpointTest {
         .statusCode(200);
   }
 
+  // --- Replace lifecycle: old archived, new active ---
+
+  @Test
+  void replace_thenVerifyOldArchivedAndNewCreated() {
+    // Use EINDHOVEN-001 (max 2 warehouses, maxCapacity=70) — no other test successfully
+    // creates a warehouse there, so this test is fully isolated.
+
+    // Step 1: create a warehouse and capture its numeric id.
+    String oldId =
+        given()
+            .contentType(ContentType.JSON)
+            .body("""
+                {
+                  "businessUnitCode": "MWH.REPLACE",
+                  "location": "EINDHOVEN-001",
+                  "capacity": 30,
+                  "stock": 0
+                }
+                """)
+            .when()
+            .post(PATH)
+            .then()
+            .statusCode(200)
+            .extract()
+            .path("id");
+
+    // Step 2: replace — new capacity 40, same stock (0).
+    // Archives the old warehouse and creates a new one with the same BUC.
+    String newId =
+        given()
+            .contentType(ContentType.JSON)
+            .body("""
+                {
+                  "businessUnitCode": "MWH.REPLACE",
+                  "location": "EINDHOVEN-001",
+                  "capacity": 40,
+                  "stock": 0
+                }
+                """)
+            .when()
+            .post(PATH + "/MWH.REPLACE/replacement")
+            .then()
+            .statusCode(200)
+            .body("businessUnitCode", equalTo("MWH.REPLACE"))
+            .body("capacity", equalTo(40))
+            .body("id", notNullValue())
+            .extract()
+            .path("id");
+
+    // Step 3: old numeric id must be archived → 404.
+    given()
+        .when()
+        .get(PATH + "/" + oldId)
+        .then()
+        .statusCode(404);
+
+    // Step 4: new numeric id must be active with the updated capacity.
+    given()
+        .when()
+        .get(PATH + "/" + newId)
+        .then()
+        .statusCode(200)
+        .body("businessUnitCode", equalTo("MWH.REPLACE"))
+        .body("capacity", equalTo(40));
+  }
+
   // --- GET /q/health/ready ---
 
   @Test
